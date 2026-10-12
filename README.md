@@ -1,6 +1,6 @@
 # md2zh
 
-将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`),全流程自动化、无人值守。
+将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
 ![Version](https://img.shields.io/badge/version-0.1.0-brightgreen)
@@ -28,6 +28,7 @@
 - 🔁 **自动修复循环**:块级校验失败时携带具体错误说明自动重译(≤2 次),仍失败则该块回退保留原文(格式天然正确),全程无需人工干预
 - 📄 **长文档可靠**:≤15000 字符整文一次调用(术语天然一致);超长文档按逻辑边界分段,每段附前段上下文保证术语延续,超限块自动放大输出预算
 - 📚 **术语表**:支持自定义术语对照,缺省自动加载用户配置目录默认术语表
+- 🔌 **管道过滤器**:`md2zh -` 从 stdin 读入、译文写 stdout,可直接嵌入 unix 管道;字节保真输出(绕开平台行尾翻译,统一 LF)
 - 🐚 **unix-cli 规范**:stdout 只输出数据——文件/批量模式输出译文路径(可管道),stdin 模式输出译文正文;进度/警告走 stderr;标准退出码;`--help`/`--version` 完备
 
 ## 安装
@@ -83,7 +84,7 @@ cat ABC.md | md2zh -
 | 64 | 命令行用法错误(缺参数、FILE 与 --filelist 冲突等) |
 | 65 | 术语表格式错误或源文件非 UTF-8 |
 | 66 | 输入文件不存在/无法读取 |
-| 74 | 输出文件写入失败 |
+| 74 | 读写失败(文件 I/O 或 stdin 读取) |
 | 75 | 翻译 API 临时不可用(重试耗尽) |
 | 130 | 用户 Ctrl-C 中断 |
 | 141 | 下游管道提前关闭(SIGPIPE) |
@@ -130,6 +131,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ## 项目结构
 
 ```
+├── README.md / CHANGELOG.md / LICENSE / CLAUDE.md / pyproject.toml
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
 │                       # checks(格式校验) / translator(编排与批量)
 ├── tests/              # 88 项测试,API 全 mock
@@ -142,7 +144,8 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 
 - 极罕见格式的畸形 API 响应(`delta` 字段为非对象)可能与参考实现同样触发错误(不影响正常使用);
 - frontmatter 识别与表格分块采用启发式:复杂嵌套 YAML frontmatter、紧凑表格等边界场景由校验+回退原文兜底,格式正确性优先;
-- 校验失败兜底意味着极端情况下个别块可能保留英文原文,stderr 会给出明确警告。
+- 校验失败兜底意味着极端情况下个别块可能保留英文原文,stderr 会给出明确警告;
+- stdin 模式:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出);输出统一 LF(与文件模式行尾保真不同)。
 
 ## 参考
 

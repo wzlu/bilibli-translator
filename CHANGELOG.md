@@ -14,6 +14,8 @@
 ### 修复
 
 - 下游管道提前关闭(如 `md2zh x | head`)按 128+SIGPIPE 静默退出,不再打印堆栈
+- 数据输出改为 flush-through 并识别 errno(EPIPE/EINVAL),静默退出覆盖文件/批量模式的缓冲写路径
+- stdin 输出前折叠 API 混入的 CRLF,保证 LF 源输出 LF
 
 ### 变更
 

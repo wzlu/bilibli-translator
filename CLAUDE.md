@@ -2,14 +2,14 @@
 
 ## Overview
 
-将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.1.0。
+将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.1.0。
 
 ## Architecture
 
 五模块分层(职责边界严格,不跨层):
 
-- `cli.py` — 参数解析(用法错误退出 64)、退出码映射、main 入口
-- `translator.py` — 编排层:单文件全流程、修复循环、批量处理、原子写;退出码常量全 CLI 唯一出处
+- `cli.py` — 参数解析(用法错误退出 64)、`-` 路由到 stdin 模式、退出码映射、main 入口(SIGINT/SIGPIPE 捕获)
+- `translator.py` — 编排层:单文件全流程、修复循环、批量处理、stdin 模式(run_stdin)、原子写;退出码常量全 CLI 唯一出处
 - `api.py` — 术语表加载、提示词构建、流式翻译请求与重试(运行期依赖仅 `requests`)
 - `markdown.py` — 纯文本块解析:frontmatter 拆分、代码块/行内代码占位符保护、逻辑分段
 - `checks.py` — 纯函数块级校验:加黑配对、链接、表格、frontmatter、占位符
@@ -21,7 +21,8 @@
 - **四重格式保障**:占位符隔离 + 提示词格式约束 + 块级校验 + 自动修复循环(校验失败带错误说明重译 ≤2 次,仍失败该块回退保留原文)
 - **frontmatter 独立翻译**:仅译 value,key 与 `---` 标记严格保留,校验失败回退原文
 - **术语表**:`--glossary` 指定 JSON 文件(`{"英文": "中文"}`);缺省自动加载 `~/.config/md2zh/glossary.json`(不存在视为无术语表);以【硬性要求】专名/术语对照附加到每段请求
-- **换行保真**:CRLF 源输出 CRLF,LF 源输出 LF(读取期关闭行尾翻译、检测后管线内部统一 LF、写回源风格)
+- **换行保真**:文件模式 CRLF 源输出 CRLF,LF 源输出 LF(读取期关闭行尾翻译、检测后管线内部统一 LF、写回源风格);stdin 模式统一 LF 输出(写前折叠混入的 CRLF)
+- **stdin 字节保真**:`md2zh -` 译文经 `sys.stdout.buffer` 字节写出(绕开平台行尾翻译),结尾无换行时补一个 `\n`;空输入直接成功退出不调 API
 
 ## Setup & Installation
 
@@ -71,7 +72,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 ## File Structure
 
 ```
-├── CLAUDE.md / README.md / pyproject.toml / .gitignore
+├── CLAUDE.md / README.md / CHANGELOG.md / LICENSE / pyproject.toml / .gitignore
 ├── src/md2zh/           # 五模块实现(__init__.py 存版本号)
 ├── tests/               # pytest:test_markdown / test_checks / test_api / test_translator / test_cli / test_version
 ├── data/sample_en.md    # 手工验证样例(真实 API 产物 *_zh.md 不入库)
@@ -86,9 +87,12 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 
 同日发布至 GitHub:添加远程 origin(https://github.com/wzlu/bilibli-translator),main 建立上游跟踪并推送全部 21 个提交;发布版 README 改写、CLAUDE.md、docs/ 与 references/ 由未跟踪转为入库(提交 0c3b03a)。
 
+同日完成 stdin 管道过滤器与 unix-cli 审计修复:新增 `md2zh -`(stdin 读入、译文写 stdout,字节保真输出);unix-cli 44 规则审计修复 SIGPIPE 静默退出(141,flush-through + errno 感知)与 `--help` 示例;88/88 测试通过。SDD 全流程:3 任务 × 实施/双重审查 + opus 全分支终审 "Ready to merge: Yes"(修复波后),推送 origin/main(提交 5eb2da4..86fcb14)。
+
 ## Important Notes
 
 - **`references/call_api.py` 是参考实现,不得修改**
+- stdin 模式注意:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出,不调用 API);输出统一 LF(与文件模式行尾保真不同);`run_stdin` 的断管/读写错误分支无专属测试(行为经 main 处理器等价覆盖)
 - 已知限制(终审裁决随行发布):SSE `delta` 为非 dict 时的极端畸形分片未防护(与参考实现同款);表格行跨表按全局下标配对、frontmatter 冒号启发式、紧凑表格 `|--|--|` 不识别等启发式边界——最坏后果为无谓重译或该块回退原文,损害有界
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
 - 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
