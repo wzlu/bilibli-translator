@@ -418,6 +418,15 @@ def test_unpaired_bracket_in_wildcard_pattern(tmp_path):
     m = ignore.load_ignore(str(f))
     assert m.is_ignored("D:\\x\\a[bc.md")
     assert not m.is_ignored("D:\\x\\ab.md")
+
+
+def test_load_directory_warns_empty(tmp_path, capsys):
+    # 忽略路径为目录等 OSError 场景:警告 + 空表(§8 降级)
+    d = tmp_path / "asdir"
+    d.mkdir()
+    m = ignore.load_ignore(str(d))
+    assert not m.is_ignored("D:\\x\\a.md")
+    assert "md2zh: 警告" in capsys.readouterr().err
 ```
 
 - [ ] **Step 2: 运行测试确认 RED**
@@ -443,11 +452,9 @@ def load_ignore(path: str = ".translateignore") -> IgnoreMatcher:
             with open(path, encoding="gbk") as f:
                 lines = f.read().splitlines()
         except (UnicodeDecodeError, OSError) as e:
-            sys.stderr.write(f"md2zh: 警告: 无法读取忽略文件 {path},不使用忽略规则: {e}\n")
-            return IgnoreMatcher(set(), [])
+            return _warn_unreadable(path, e)
     except OSError as e:
-        sys.stderr.write(f"md2zh: 警告: 无法读取忽略文件 {path},不使用忽略规则: {e}\n")
-        return IgnoreMatcher(set(), [])
+        return _warn_unreadable(path, e)
     exact: set[str] = set()
     patterns: list[str] = []
     for line in lines:
@@ -471,15 +478,25 @@ import re
 import sys
 ```
 
-同时将 `IgnoreMatcher.__init__`(第 18-20 行)替换为(编译处捕获非法模式,警告并跳过该规则):
+同时在 `load_ignore` 定义之前插入辅助函数:
+
+```python
+def _warn_unreadable(path: str, e: Exception) -> IgnoreMatcher:
+    """忽略文件读取失败统一告警:返回空匹配器。"""
+    sys.stderr.write(f"md2zh: 警告: 无法读取忽略文件 {path},不使用忽略规则: {e}\n")
+    return IgnoreMatcher(set(), [])
+```
+
+同时将 `IgnoreMatcher.__init__`(第 18-20 行)替换为(模式构造在外、仅 `re.compile` 入 try,捕获非法模式时警告并跳过该规则):
 
 ```python
     def __init__(self, exact: set[str], patterns: list[str]):
         self._exact = exact
         regexes: list[re.Pattern] = []
         for p in patterns:
+            pattern = ("" if _is_absolute_pattern(p) else ".*") + _pattern_regex(p)
             try:
-                regexes.append(re.compile(("" if _is_absolute_pattern(p) else ".*") + _pattern_regex(p)))
+                regexes.append(re.compile(pattern))
             except re.error as e:
                 # 非法模式(如写错的字符类)按 §8 降级:警告并跳过该规则
                 sys.stderr.write(f"md2zh: 警告: 忽略规则无效,已跳过: {p}: {e}\n")
@@ -489,7 +506,7 @@ import sys
 - [ ] **Step 4: 运行测试确认 GREEN**
 
 运行:`python -m pytest tests/test_ignore.py -v && python -m pytest -v`
-期望:PASS;全量 106 项(101 旧 + 5 新)全绿
+期望:PASS;全量 107 项(101 旧 + 6 新)全绿
 
 - [ ] **Step 5: 提交**
 
@@ -643,7 +660,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
 - [ ] **Step 4: 运行测试确认 GREEN**
 
 运行:`python -m pytest tests/test_translator.py -v && python -m pytest -v`
-期望:PASS;全量 110 项(106 旧 + 4 新)全绿(既有批量测试仅断言子串,不受汇总格式扩展影响)
+期望:PASS;全量 111 项(107 旧 + 4 新)全绿(既有批量测试仅断言子串,不受汇总格式扩展影响)
 
 - [ ] **Step 5: 提交**
 
@@ -764,7 +781,7 @@ def test_filelist_mode(monkeypatch, tmp_path, capsys):
 - [ ] **Step 4: 运行测试确认 GREEN**
 
 运行:`python -m pytest tests/test_cli.py -v && python -m pytest -v`
-期望:PASS;全量 113 项(110 旧 + 3 新)全绿
+期望:PASS;全量 114 项(111 旧 + 3 新)全绿
 
 - [ ] **Step 5: 提交**
 
@@ -834,7 +851,7 @@ version = "0.2.0"
 
 ```markdown
 ![Version](https://img.shields.io/badge/version-0.2.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-113%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-114%20passed-brightgreen)
 ```
 
 2. 目录(第 17 行后)追加一行:
@@ -871,7 +888,7 @@ version = "0.2.0"
 
 7. 行为约定 stdout 一条(第 74 行)`进度、跳过提示、警告、汇总全部走 stderr` 改为 `进度、跳过/忽略提示、警告、汇总全部走 stderr`
 
-8. 开发节测试计数(第 123、137 行)`88 项` 改为 `113 项`;项目结构树(第 135-136 行)第二行注释改为:
+8. 开发节测试计数(第 123、137 行)`88 项` 改为 `114 项`;项目结构树(第 135-136 行)第二行注释改为:
 
 ```
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
@@ -902,7 +919,7 @@ version = "0.2.0"
 
 4. 「## File Structure」`# 五模块实现(__init__.py 存版本号)` 改为 `# 六模块实现(__init__.py 存版本号)`
 
-5. 「## Development Workflow」测试行 `(88 项,API 全部 mock,不依赖真实网络)` 改为 `(113 项,API 全部 mock,不依赖真实网络)`
+5. 「## Development Workflow」测试行 `(88 项,API 全部 mock,不依赖真实网络)` 改为 `(114 项,API 全部 mock,不依赖真实网络)`
 
 - [ ] **Step 6: .gitignore 追加**
 
@@ -915,7 +932,7 @@ version = "0.2.0"
 - [ ] **Step 7: 全量测试**
 
 运行:`python -m pytest -v`
-期望:113 项全绿
+期望:114 项全绿
 
 - [ ] **Step 8: 提交**
 
@@ -950,4 +967,4 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 - 规格覆盖:§2 范围(Task 4/5,单文件与 stdin 未触碰)、§5 解析(Task 1/3)、§6 匹配(Task 2)、§7 接线统计(Task 4/5)、§8 错误处理(Task 3)、§9 测试(Task 1-5)、§10 文档版本(Task 6)、§11 已知限制(Task 2 固化过匹配用例);
 - 类型一致性:`load_ignore(path: str = ".translateignore") -> IgnoreMatcher`、`is_ignored(path: str) -> bool`、`run_batch(..., ignore_matcher: ignore.IgnoreMatcher | None = None)` 各任务间签名一致;
-- 测试计数:88 → 94(任务 1)→ 101(任务 2)→ 106(任务 3)→ 110(任务 4)→ 113(任务 5),任务 6 维持 113。
+- 测试计数:88 → 94(任务 1)→ 101(任务 2)→ 107(任务 3,含审查修复)→ 111(任务 4)→ 114(任务 5),任务 6 维持 114。
