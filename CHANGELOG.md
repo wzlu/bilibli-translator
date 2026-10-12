@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.5] - 2026-10-12
+
+### 变更
+
+- 不再校验 frontmatter:按现有提示词规则翻译后译文直接采用,不重译、不回退(消除 YAML 折叠标量续行被冒号启发式误判导致的整块回退;取舍:模型若改 key 或丢 --- 标记将直接写出,由提示词约束保持)
+
 ## [0.2.4] - 2026-10-12
 
 ### 修复
@@ -91,7 +97,8 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.5
 [0.2.4]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.4
 [0.2.3]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.3
 [0.2.2]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.2
