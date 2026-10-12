@@ -342,12 +342,12 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task 2: CLI --repair 开关
 
 **Files:**
-- Modify: `src/md2zh/cli.py`(`parse_args` 加 `--repair`、`epilog` 加示例行、`main` 三处透传)
+- Modify: `src/md2zh/cli.py`(`parse_args` 加 `--repair`、`epilog` 加示例行、`main` 三处透传)、`src/md2zh/translator.py`(删死常量 `REPAIR_RETRIES`,任务 1 遗留,控制方批准扩展)
 - Test: `tests/test_cli.py`(+2)、`tests/test_translator.py`(+1)
 
 **Interfaces:**
 - Consumes: 任务 1 的 `run_single/run_batch/run_stdin(..., repair)` 签名与 `_repair` 语义。
-- Produces: `--repair N`(0-2,默认 0,非法 64);终态测试数 129。
+- Produces: `--repair N`(0-2,默认 0,非法 64);`REPAIR_RETRIES` 常量删除(现无任何引用);终态测试数 129。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -437,6 +437,14 @@ Expected: 2 项 FAIL(test_repair_threads_to_translator 与 test_run_stdin_defaul
                                      repair=args.repair)
 ```
 
+4. `src/md2zh/translator.py` 删除死常量(先 `grep -rn "REPAIR_RETRIES" src/ tests/` 确认零引用后删整行):
+
+```python
+REPAIR_RETRIES = 2
+```
+
+(任务 1 起该常量已无引用,控制方批准并入本任务清理,不留死代码。)
+
 - [ ] **Step 4: 运行测试确认 GREEN**
 
 Run: `python -m pytest tests/test_cli.py tests/test_translator.py::test_run_stdin_default_no_repair_accepts -v`
@@ -450,7 +458,7 @@ Expected: `129 passed`
 - [ ] **Step 6: 提交**
 
 ```bash
-git add src/md2zh/cli.py tests/test_cli.py tests/test_translator.py
+git add src/md2zh/cli.py src/md2zh/translator.py tests/test_cli.py tests/test_translator.py
 git commit -m "feat: 新增 --repair 重译开关(默认关闭)
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
@@ -582,3 +590,4 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ## 计划修订记录
 
 - **修订 1(任务 1 执行中发现,实现者披露 + 控制方裁决)**:初版计划把四个公共入口的 `repair` 写成必填参数,与规格 §4.2「默认 0」及「既有其余测试零改动」矛盾(28 处既有直接调用会 TypeError)。裁决:四个公共入口一律 keyword-only `repair: int = 0`;随之删除任务 1 Step 5 的「排除 test_cli 中间态」注记(不再出现)。规格为权威依据,无需修订规格。
+- **修订 2(任务 1 完成后,实现者披露 + 控制方批准)**:`REPAIR_RETRIES = 2` 常量自任务 1 起无引用(死常量)。并入任务 2 一并删除(不留死代码,项目纪律)。
