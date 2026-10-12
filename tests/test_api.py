@@ -52,3 +52,10 @@ def test_build_frontmatter_prompt():
     assert "key 保持不变,只翻译 value" in prompt
     assert "title: Hi" in prompt
     assert "保持首尾 --- 标记" in prompt
+
+
+def test_build_frontmatter_prompt_glossary_and_fix():
+    # 钉住共享约束装配逻辑在 frontmatter 侧的文本,防止两处漂移
+    prompt = api.build_frontmatter_prompt("---\ntitle: Hi\n---", ["A→甲"], "缺 --- 标记")
+    assert "【硬性要求】专名/术语对照: A→甲" in prompt
+    assert "上次翻译存在以下问题,请修正: 缺 --- 标记" in prompt

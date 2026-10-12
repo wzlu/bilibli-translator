@@ -55,13 +55,21 @@ def load_glossary(path: str | None) -> list[str]:
     return [f"{k.strip()}→{str(v).strip()}" for k, v in data.items()]
 
 
-def build_prompt(text: str, glossary: list[str], fix_notes: str = "", context: str = "") -> str:
-    """构建翻译提示词:【源文】+【约束要求】(格式约束+术语表+修复说明)。"""
-    constraints = list(FORMAT_CONSTRAINTS)
+_OUTPUT_ONLY = "只输出译文,不要有任何额外说明。"
+
+
+def _append_requirements(constraints: list[str], glossary: list[str], fix_notes: str) -> None:
+    """向约束列表追加术语表与修复说明(两个提示词构建器共用)。"""
     if glossary:
         constraints.append("【硬性要求】专名/术语对照: " + "、".join(glossary))
     if fix_notes:
         constraints.append(f"【硬性要求】上次翻译存在以下问题,请修正: {fix_notes}")
+
+
+def build_prompt(text: str, glossary: list[str], fix_notes: str = "", context: str = "") -> str:
+    """构建翻译提示词:【源文】+【约束要求】(格式约束+术语表+修复说明)。"""
+    constraints = list(FORMAT_CONSTRAINTS)
+    _append_requirements(constraints, glossary, fix_notes)
     req_lines = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(constraints))
     parts = ["请将以下文本翻译为中文,并且严格遵循所有约束要求。", ""]
     if context:
@@ -73,7 +81,7 @@ def build_prompt(text: str, glossary: list[str], fix_notes: str = "", context: s
         "【约束要求】",
         req_lines,
         "",
-        "只输出译文,不要有任何额外说明。",
+        _OUTPUT_ONLY,
     ]
     return "\n".join(parts)
 
@@ -87,14 +95,11 @@ def build_frontmatter_prompt(text: str, glossary: list[str], fix_notes: str = ""
         "** 加黑标记必须成对出现、包裹对应的译文词语。",
         "链接 [显示文本](url) 只翻译显示文本,url 原样保留。",
     ]
-    if glossary:
-        constraints.append("【硬性要求】专名/术语对照: " + "、".join(glossary))
-    if fix_notes:
-        constraints.append(f"【硬性要求】上次翻译存在以下问题,请修正: {fix_notes}")
+    _append_requirements(constraints, glossary, fix_notes)
     req_lines = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(constraints))
     return (
         "请将以下 YAML frontmatter 翻译为中文,并且严格遵循所有约束要求。\n\n"
         f"【源文】\n{text.strip()}\n\n"
         f"【约束要求】\n{req_lines}\n\n"
-        "只输出译文,不要有任何额外说明。"
+        f"{_OUTPUT_ONLY}"
     )
