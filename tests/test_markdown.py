@@ -74,3 +74,23 @@ def test_nested_fence_not_split():
     assert "print(1)" not in protected
     assert len(mapping) == 1
     assert markdown.restore_code_blocks(protected, mapping) == src
+
+
+def test_chunk_join_reproduces_text():
+    text = "# A\n\n段落一。\n\n| a | b |\n| 1 | 2 |\n\n段落二。\n"
+    assert "".join(markdown.chunk_text(text)) == text
+
+
+def test_chunk_table_kept_whole():
+    table = "| a | b |\n" * 10  # 90 字符,超过 max_chars=80 的整块保持完整
+    text = "前言\n\n" + table + "\n后语"
+    chunks = markdown.chunk_text(text, 80)
+    assert any(table in c for c in chunks)
+
+
+def test_chunk_splits_at_limit():
+    text = "段落。\n\n" * 25  # 每块 5 字符,总长 125
+    chunks = markdown.chunk_text(text, 100)
+    assert len(chunks) >= 2
+    assert max(len(c) for c in chunks) <= 100
+    assert "".join(chunks) == text

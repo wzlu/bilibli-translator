@@ -92,3 +92,45 @@ def restore_code_blocks(text: str, mapping: dict[str, str]) -> str:
     for ph, original in mapping.items():
         text = text.replace(ph, original)
     return text
+
+
+_TABLE_LIST_RE = re.compile(r"^\s*(\||[-*+]|\d+\.)\s+")
+
+
+def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
+    """按逻辑边界切分文本;所有段按序拼接与原文完全一致。
+
+    超出 max_chars 的不可分割块(如大表格)保持完整,不做切割。
+    """
+    blocks = _logical_blocks(text)
+    chunks: list[str] = []
+    current: list[str] = []
+    size = 0
+    for block in blocks:
+        if current and size + len(block) > max_chars:
+            chunks.append("".join(current))
+            current, size = [], 0
+        current.append(block)
+        size += len(block)
+    if current:
+        chunks.append("".join(current))
+    return chunks
+
+
+def _logical_blocks(text: str) -> list[str]:
+    """按空行切分并保留分隔符;连续的表格行/列表项合并为一块。"""
+    parts = re.split(r"(\n[ \t]*\n)", text)
+    blocks: list[str] = []
+    for i in range(0, len(parts), 2):
+        para = parts[i]
+        sep = parts[i + 1] if i + 1 < len(parts) else ""
+        if para and _is_table_or_list(para) and blocks and _is_table_or_list(blocks[-1]):
+            blocks[-1] += sep + para
+            continue
+        blocks.append(para + sep)
+    return blocks
+
+
+def _is_table_or_list(para: str) -> bool:
+    """段落首行是否为表格行或列表项。"""
+    return bool(_TABLE_LIST_RE.match(para))
