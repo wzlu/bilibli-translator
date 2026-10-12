@@ -17,7 +17,7 @@
   - repair>0 耗尽:`md2zh: 警告: {前缀}块重译耗尽,采用译文: {问题}`
   - 「块重译耗尽,保留原文」永久移除。
 - `_repair` 新签名:`(make_prompt, check, *, api_base, model, max_tokens, label, source="", retries=0) -> str`;循环 `range(retries + 1)`,守卫 `attempt < retries`,无越界。
-- 穿透签名:`translate_file(src_path, *, force, glossary, api_base, model, repair)`、`run_single(path, *, force, glossary, api_base, model, repair)`、`run_batch(paths, *, force, glossary, api_base, model, repair, ignore_matcher=None)`、`run_stdin(*, glossary, api_base, model, repair)`、`_translate_document(text, glossary, api_base, model, *, source="", repair=0)`、`_translate_long(text, glossary, api_base, model, *, mapping, source="", repair=0)`、`_translate_chunk(src, glossary, api_base, model, max_tokens, context="", *, source="", repair=0)`。
+- 穿透签名(全部 keyword-only 追加,默认 0):`translate_file(src_path, *, force, glossary, api_base, model, repair: int = 0)`、`run_single(path, *, force, glossary, api_base, model, repair: int = 0)`、`run_batch(paths, *, force, glossary, api_base, model, repair: int = 0, ignore_matcher=None)`、`run_stdin(*, glossary, api_base, model, repair: int = 0)`、`_translate_document(text, glossary, api_base, model, *, source="", repair=0)`、`_translate_long(text, glossary, api_base, model, *, mapping, source="", repair=0)`、`_translate_chunk(src, glossary, api_base, model, max_tokens, context="", *, source="", repair=0)`。
 - 三重校验(链接/表格/占位符)函数、占位符管线、退出码契约(64 复用)、流约定、换行保真、frontmatter 路径(v0.2.5)均不变;不修改 `references/call_api.py`。
 - 严格 TDD:先写失败测试 → 确认 RED → 最小实现 → GREEN → 提交;每任务独立提交;提交信息以 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 结尾。
 - 测试数演进:**124 → 126 → 129**;全部任务完成后 129 项全绿。
@@ -247,7 +247,7 @@ def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
 
 ```python
 def translate_file(src_path: str, *, force: bool, glossary: list[str],
-                   api_base: str, model: str, repair: int) -> TranslateResult:
+                   api_base: str, model: str, repair: int = 0) -> TranslateResult:
 ```
 
 ```python
@@ -290,7 +290,7 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
 
 ```python
 def run_single(path: str, *, force: bool, glossary: list[str],
-               api_base: str, model: str, repair: int) -> int:
+               api_base: str, model: str, repair: int = 0) -> int:
 ```
 
 ```python
@@ -300,7 +300,7 @@ def run_single(path: str, *, force: bool, glossary: list[str],
 
 ```python
 def run_batch(paths: list[str], *, force: bool, glossary: list[str],
-              api_base: str, model: str, repair: int,
+              api_base: str, model: str, repair: int = 0,
               ignore_matcher: ignore.IgnoreMatcher | None = None) -> int:
 ```
 
@@ -310,7 +310,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
 ```
 
 ```python
-def run_stdin(*, glossary: list[str], api_base: str, model: str, repair: int) -> int:
+def run_stdin(*, glossary: list[str], api_base: str, model: str, repair: int = 0) -> int:
 ```
 
 ```python
@@ -323,12 +323,10 @@ def run_stdin(*, glossary: list[str], api_base: str, model: str, repair: int) ->
 Run: `python -m pytest tests/test_translator.py -v`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 全量回归(除 test_cli)**
+- [ ] **Step 5: 全量回归**
 
-**控制方注**:Task 1 完成后 test_cli 既有用例将因 `repair` 缺参 TypeError 失败,属预期中间态;Task 2 接通 CLI 后恢复。故本步排除 test_cli:
-
-Run: `python -m pytest tests -v --ignore=tests/test_cli.py`
-Expected: 全部 PASS(当前 126 项中除 test_cli 外的其余各项;test_cli 待任务 2 恢复)
+Run: `python -m pytest -v`
+Expected: `126 passed`(124 + 2 新增;改写净 0;公共入口默认 0,test_cli 既有用例不受影响)
 
 - [ ] **Step 6: 提交**
 
@@ -579,4 +577,8 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 - **规格覆盖**:§2 需求 1(--repair CLI)→ 任务 2;需求 2(永不回退/警告)→ 任务 1;需求 3(三重校验等不变)→ 全局约束与任务 1 范围;需求 4(穿透)→ 任务 1;需求 5(计数器)→ 任务 1 Step 3 守卫;§5 测试表 → 任务 1/2(新增 2+3 项、改写 8 项);§5 真实 API 复验 → 「发布前真实 API 复验」小节(验收阈值逐字一致);§6 文档 → 任务 3。
 - **占位符扫描**:无 TBD/「类似任务 N」;所有代码步骤给出完整代码;CLAUDE.md 提交范围哈希由确切命令运行时取值。
-- **类型一致性**:测试数演进 124 → 126 → 129 与各任务回归预期吻合(任务 1 回归排除 test_cli 的中间态已注明:其调用链待任务 2 接通 repair);穿透签名与全局约束逐字一致;警告契约三行文本与规格 §4.4 逐字一致;`_repair` 返回值/循环/守卫与规格 §4.1 逐字一致。
+- **类型一致性**:测试数演进 124 → 126 → 129 与各任务回归预期吻合;穿透签名与全局约束逐字一致(公共入口默认 0,既有测试零改动);警告契约三行文本与规格 §4.4 逐字一致;`_repair` 返回值/循环/守卫与规格 §4.1 逐字一致。
+
+## 计划修订记录
+
+- **修订 1(任务 1 执行中发现,实现者披露 + 控制方裁决)**:初版计划把四个公共入口的 `repair` 写成必填参数,与规格 §4.2「默认 0」及「既有其余测试零改动」矛盾(28 处既有直接调用会 TypeError)。裁决:四个公共入口一律 keyword-only `repair: int = 0`;随之删除任务 1 Step 5 的「排除 test_cli 中间态」注记(不再出现)。规格为权威依据,无需修订规格。
