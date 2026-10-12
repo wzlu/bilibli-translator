@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
 ![Version](https://img.shields.io/badge/version-0.1.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-76%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-88%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -24,7 +24,7 @@
 ## 特性
 
 - 🔒 **代码零泄露**:代码块与行内代码经占位符物理隔离,内容绝不发送给翻译 API
-- 📐 **格式保真**:frontmatter(仅译 value,key 与 `---` 标记不变)、`**` 加黑配对、链接 url、表格行列均与原文一致;CRLF/LF 行尾按源文件原样保持
+- 📐 **格式保真**:frontmatter(仅译 value,key 与 `---` 标记不变)、`**` 加黑配对、链接 url、表格行列均与原文一致;CRLF/LF 行尾按源文件原样保持(stdin 模式输出 LF)
 - 🔁 **自动修复循环**:块级校验失败时携带具体错误说明自动重译(≤2 次),仍失败则该块回退保留原文(格式天然正确),全程无需人工干预
 - 📄 **长文档可靠**:≤15000 字符整文一次调用(术语天然一致);超长文档按逻辑边界分段,每段附前段上下文保证术语延续,超限块自动放大输出预算
 - 📚 **术语表**:支持自定义术语对照,缺省自动加载用户配置目录默认术语表
@@ -119,7 +119,7 @@ POST https://index-translate.bilibili.com/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(76 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(88 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -132,7 +132,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
 │                       # checks(格式校验) / translator(编排与批量)
-├── tests/              # 76 项测试,API 全 mock
+├── tests/              # 88 项测试,API 全 mock
 ├── data/sample_en.md   # 手工验证样例
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)

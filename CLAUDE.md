@@ -35,7 +35,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(76 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(88 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -66,7 +66,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 **退出码契约:** 0 成功(含全部跳过/回退原文) / 1 批量部分失败 / 64 用法错误 / 65 术语表格式错误或源文件非 UTF-8 / 66 输入不存在 / 74 写失败 / 75 API 临时不可用 / 130 SIGINT / 141 SIGPIPE(下游管道提前关闭)。
 
-**流约定:** stdout 只输出数据(成功生成的译文路径,每行一个,可管道);进度、跳过提示、警告、汇总全部走 stderr;错误消息 GNU 格式 `md2zh: 上下文: 信息`;用户可见错误不打 Python 堆栈。
+**流约定:** stdout 只输出数据(文件/批量模式输出译文路径,每行一个,可管道;stdin 模式输出译文正文);进度、跳过提示、警告、汇总全部走 stderr;错误消息 GNU 格式 `md2zh: 上下文: 信息`;用户可见错误不打 Python 堆栈。
 
 ## File Structure
 

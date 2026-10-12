@@ -239,7 +239,7 @@ def run_stdin(*, glossary: list[str], api_base: str, model: str) -> int:
         print(f"md2zh: 错误: 翻译 API 错误: {e}", file=sys.stderr)
         return EX_TEMPFAIL
     translated = translated.replace("\r\n", "\n")  # 防 API 中途混入 CRLF,与文件模式输出前折叠一致
-    # buffer 字节写出:绕开平台行尾翻译,与文件模式输出字节一致(换行保真)
+    # buffer 字节写出:绕开平台行尾翻译;结尾无换行时补一个 \n(输出为 LF)
     data = translated.encode("utf-8")
     if not data.endswith(b"\n"):
         data += b"\n"
