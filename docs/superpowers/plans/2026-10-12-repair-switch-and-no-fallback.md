@@ -398,7 +398,7 @@ def test_run_stdin_default_no_repair_accepts(monkeypatch, capsys):
 - [ ] **Step 2: 运行测试确认 RED**
 
 Run: `python -m pytest tests/test_cli.py::test_repair_invalid_exits_usage tests/test_cli.py::test_repair_threads_to_translator tests/test_translator.py::test_run_stdin_default_no_repair_accepts -v`
-Expected: 2 项 FAIL(test_repair_threads_to_translator 与 test_run_stdin_default_no_repair_accepts:旧 CLI 不识别 `--repair` → SystemExit 64 而非 EX_OK;run_stdin 无 repair 参数 → TypeError)。`test_repair_invalid_exits_usage` 为钉桩项:旧实现下因「无法识别 --repair」同样退出 64 而先行通过,写后即通过(新实现下其语义由 choices=range(3) 保证)。
+Expected: 1 项 FAIL(`test_repair_threads_to_translator`:旧 CLI 不识别 `--repair` → SystemExit 64 而非 EX_OK)。另 2 项先行通过:`test_repair_invalid_exits_usage` 为钉桩项(旧实现因「无法识别 --repair」同样退出 64);`test_run_stdin_default_no_repair_accepts` 因修订 1(任务 1 已给 run_stdin 默认 0)在 RED 阶段即通过。
 
 - [ ] **Step 3: 最小实现**
 
@@ -591,3 +591,4 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 - **修订 1(任务 1 执行中发现,实现者披露 + 控制方裁决)**:初版计划把四个公共入口的 `repair` 写成必填参数,与规格 §4.2「默认 0」及「既有其余测试零改动」矛盾(28 处既有直接调用会 TypeError)。裁决:四个公共入口一律 keyword-only `repair: int = 0`;随之删除任务 1 Step 5 的「排除 test_cli 中间态」注记(不再出现)。规格为权威依据,无需修订规格。
 - **修订 2(任务 1 完成后,实现者披露 + 控制方批准)**:`REPAIR_RETRIES = 2` 常量自任务 1 起无引用(死常量)。并入任务 2 一并删除(不留死代码,项目纪律)。
+- **修订 3(任务 2 执行中发现,实现者披露 + 控制方确认)**:任务 2 Step 2 的 RED 预期原为「2 FAIL」,实际 1 FAIL——`test_run_stdin_default_no_repair_accepts` 因修订 1 已在 RED 阶段通过(测试按简报逐字保留,终态覆盖仍有效)。Step 2 预期文本已同步。
