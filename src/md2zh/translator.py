@@ -5,7 +5,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 
-from md2zh import api, checks, markdown
+from md2zh import api, checks, ignore, markdown
 
 # 退出码契约(规格 §8),全 CLI 唯一出处
 EX_OK = 0
@@ -203,10 +203,18 @@ def run_single(path: str, *, force: bool, glossary: list[str],
 
 
 def run_batch(paths: list[str], *, force: bool, glossary: list[str],
-              api_base: str, model: str) -> int:
-    """批量模式:继续处理所有文件,最后汇总;存在失败返回 EX_PARTIAL。"""
-    ok = skipped = failed = 0
+              api_base: str, model: str,
+              ignore_matcher: ignore.IgnoreMatcher | None = None) -> int:
+    """批量模式:继续处理所有文件,最后汇总;存在失败返回 EX_PARTIAL。
+
+    忽略列表命中优先于扩展名与存在性检查,且不受 --force 影响。
+    """
+    ok = skipped = ignored = failed = 0
     for p in paths:
+        if ignore_matcher is not None and ignore_matcher.is_ignored(p):
+            print(f"md2zh: 忽略 {p}: 命中忽略列表", file=sys.stderr)
+            ignored += 1
+            continue
         result = translate_file(p, force=force, glossary=glossary,
                                 api_base=api_base, model=model)
         if result.status == "ok":
@@ -218,7 +226,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
         else:
             print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)
             failed += 1
-    print(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},失败 {failed}", file=sys.stderr)
+    print(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},忽略 {ignored},失败 {failed}", file=sys.stderr)
     return EX_PARTIAL if failed else EX_OK
 
 

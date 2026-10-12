@@ -2,6 +2,7 @@ import io
 import sys
 
 from md2zh import api
+from md2zh import ignore
 from md2zh import translator
 
 
@@ -320,3 +321,74 @@ def test_run_stdin_folds_mid_text_crlf(monkeypatch, capsys):
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好\r\n世界")
     assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
     assert capsys.readouterr().out == "# 你好\n世界\n"
+
+
+def test_run_batch_ignored_files_skipped(monkeypatch, tmp_path, capsys):
+    # 忽略命中:不调用翻译 API,计入「忽略」数
+    good = tmp_path / "good.md"
+    good.write_text("# Hi", encoding="utf-8")
+    ti = tmp_path / ".translateignore"
+    ti.write_text(str(good) + "\n", encoding="utf-8")
+    matcher = ignore.load_ignore(str(ti))
+    calls = {"n": 0}
+
+    def fake(*a, **k):
+        calls["n"] += 1
+        return "# 你好"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    rc = translator.run_batch([str(good)], force=False, glossary=[],
+                              api_base="http://x", model="m", ignore_matcher=matcher)
+    assert rc == translator.EX_OK
+    assert calls["n"] == 0
+    captured = capsys.readouterr()
+    assert "md2zh: 忽略 " in captured.err
+    assert "成功 0" in captured.err
+
+
+def test_run_batch_all_ignored_returns_0(tmp_path, capsys):
+    # 全部被忽略 → 退出 0(符合"0 成功含全部跳过"契约)
+    p = tmp_path / "a.md"
+    p.write_text("# Hi", encoding="utf-8")
+    ti = tmp_path / ".translateignore"
+    ti.write_text(str(p) + "\n", encoding="utf-8")
+    matcher = ignore.load_ignore(str(ti))
+    rc = translator.run_batch([str(p)], force=False, glossary=[],
+                              api_base="http://x", model="m", ignore_matcher=matcher)
+    assert rc == translator.EX_OK
+    assert "汇总: 成功 0,跳过 0,忽略 1,失败 0" in capsys.readouterr().err
+
+
+def test_run_batch_ignored_and_failed_returns_1(tmp_path, capsys):
+    # 忽略与失败混合:忽略不算失败,存在失败仍退出 1
+    p = tmp_path / "a.md"
+    p.write_text("# Hi", encoding="utf-8")
+    ti = tmp_path / ".translateignore"
+    ti.write_text(str(p) + "\n", encoding="utf-8")
+    matcher = ignore.load_ignore(str(ti))
+    rc = translator.run_batch([str(p), str(tmp_path / "missing.md")], force=False,
+                              glossary=[], api_base="http://x", model="m",
+                              ignore_matcher=matcher)
+    assert rc == translator.EX_PARTIAL
+    assert "汇总: 成功 0,跳过 0,忽略 1,失败 1" in capsys.readouterr().err
+
+
+def test_run_batch_ignore_wins_over_force(monkeypatch, tmp_path):
+    # --force 不覆盖忽略:被忽略文件即使已有译文也不翻译
+    p = tmp_path / "a.md"
+    p.write_text("# Hi", encoding="utf-8")
+    (tmp_path / "a_zh.md").write_text("已有", encoding="utf-8")
+    ti = tmp_path / ".translateignore"
+    ti.write_text(str(p) + "\n", encoding="utf-8")
+    matcher = ignore.load_ignore(str(ti))
+    calls = {"n": 0}
+
+    def fake(*a, **k):
+        calls["n"] += 1
+        return "# 你好"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    rc = translator.run_batch([str(p)], force=True, glossary=[],
+                              api_base="http://x", model="m", ignore_matcher=matcher)
+    assert rc == translator.EX_OK
+    assert calls["n"] == 0
