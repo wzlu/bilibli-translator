@@ -51,6 +51,7 @@ def load_glossary(path: str | None) -> list[str]:
     if not isinstance(data, dict):
         if explicit:
             raise ValueError(f"术语表文件必须是 JSON 对象: {target}")
+        sys.stderr.write(f"md2zh: 警告: 默认术语表不是 JSON 对象,已忽略: {target}\n")
         return []
     return [f"{k.strip()}→{str(v).strip()}" for k, v in data.items()]
 
@@ -159,4 +160,5 @@ def translate_text(api_base: str, model: str, prompt: str, max_tokens: int) -> s
                 return text.strip()
         except (requests.RequestException, TranslateError) as e:
             last_error = e
-    raise TranslateError(str(last_error))
+    # from 保留原始异常链,便于排查根因
+    raise TranslateError(str(last_error)) from last_error

@@ -56,3 +56,10 @@ def test_filelist_mode(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
     assert cli.main(["--filelist", str(lst)]) == translator.EX_OK
     assert str(tmp_path / "A_zh.md") in capsys.readouterr().out
+
+def test_filelist_non_utf8_exit_65(tmp_path, capsys):
+    # 非 UTF-8 文件列表应返回 EX_DATAERR,而不是让 UnicodeDecodeError 崩溃
+    lst = tmp_path / "list.txt"
+    lst.write_bytes("文档.md\n".encode("gbk"))
+    assert cli.main(["--filelist", str(lst)]) == translator.EX_DATAERR
+    assert "Traceback" not in capsys.readouterr().err

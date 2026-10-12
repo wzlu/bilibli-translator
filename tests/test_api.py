@@ -25,6 +25,14 @@ def test_load_glossary_bad_json(tmp_path):
     with pytest.raises(ValueError):
         api.load_glossary(str(p))
 
+def test_load_glossary_default_non_dict_warns(tmp_path, monkeypatch, capsys):
+    # 默认术语表不是 JSON 对象时与格式错误同样警告,而非静默忽略
+    p = tmp_path / "g.json"
+    p.write_text("[1, 2]", encoding="utf-8")
+    monkeypatch.setattr(api, "DEFAULT_GLOSSARY", str(p))
+    assert api.load_glossary(None) == []
+    assert "警告" in capsys.readouterr().err
+
 
 def test_build_prompt_contains_constraints():
     prompt = api.build_prompt("Hello", [], "")
@@ -118,6 +126,16 @@ def test_translate_text_retries_then_raises(monkeypatch):
     with pytest.raises(api.TranslateError):
         api.translate_text("http://x/v1", "m", "p", 1024)
     assert count["n"] == api.RETRY_TIMES + 1
+
+def test_translate_text_error_preserves_cause(monkeypatch):
+    # 重试耗尽抛出的 TranslateError 应保留原始异常链,便于排查根因
+    def fake_post(url, json, timeout, stream, headers=None):
+        raise requests.ConnectionError("网络错误")
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    with pytest.raises(api.TranslateError) as e:
+        api.translate_text("http://x/v1", "m", "p", 1024)
+    assert e.value.__cause__ is not None
 
 
 def test_translate_text_recovers_on_second_try(monkeypatch):

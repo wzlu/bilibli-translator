@@ -57,7 +57,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.filelist:
             try:
                 paths = translator.parse_filelist(args.filelist)
-            except OSError as e:
+            except (OSError, UnicodeDecodeError) as e:
+                # 非 UTF-8 文件列表按 EX_DATAERR 处理,与源文件非 UTF-8 契约一致
+                if isinstance(e, UnicodeDecodeError):
+                    print(f"md2zh: 错误: 文件列表不是 UTF-8 编码 {args.filelist}: {e}", file=sys.stderr)
+                    return translator.EX_DATAERR
                 print(f"md2zh: 错误: 无法读取文件列表 {args.filelist}: {e}", file=sys.stderr)
                 return translator.EX_NOINPUT
             return translator.run_batch(paths, force=args.force, glossary=glossary,
