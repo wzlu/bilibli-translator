@@ -200,7 +200,7 @@ def test_glob_relative_right_aligned(tmp_path):
 def test_glob_relative_overmatch_known_limitation(tmp_path):
     # 规格 §11 固化的已知限制:无 ** 相对模式前缀 .* 可能过匹配段边界
     f = tmp_path / ".translateignore"
-    f.write_text("docs\\a.md\n", encoding="utf-8")
+    f.write_text("docs\\a*.md\n", encoding="utf-8")
     m = ignore.load_ignore(str(f))
     assert m.is_ignored("D:\\proj\\xdocs\\a.md")
 
@@ -839,7 +839,7 @@ version = "0.2.0"
 9. 已知限制区(第 148 行后)追加一条:
 
 ```markdown
-- 忽略列表通配匹配:`**` 与段内 `*` 语义同 gitignore 子集;无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a.md` 会命中 `xdocs/a.md`),损害有界(多跳过可在 stderr 审计);
+- 忽略列表通配匹配:`**` 与段内 `*` 语义同 gitignore 子集;无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`),损害有界(多跳过可在 stderr 审计);
 ```
 
 - [ ] **Step 5: CLAUDE.md 同步**
