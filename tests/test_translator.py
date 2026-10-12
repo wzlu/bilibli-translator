@@ -115,50 +115,52 @@ def test_translate_file_preserves_lf(monkeypatch, tmp_path):
 
 
 def test_chunk_repair_then_success(monkeypatch):
-    # 第一次译文丢失链接,第二次修复
+    # 第一次译文丢失链接,第二次修复(repair=1)
     outputs = iter(["没有链接的译文", "[译文](https://x)"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
-    result = translator._translate_chunk("[text](https://x)", [], "http://x", "m", 4096)
+    result = translator._translate_chunk("[text](https://x)", [], "http://x", "m", 4096, repair=1)
     assert result == "[译文](https://x)"
 
 
-def test_chunk_repair_exhausted_falls_back(monkeypatch):
-    # 始终丢失链接:3 次尝试(1 次初译 + 2 次重译)后回退原文
+def test_chunk_repair_exhausted_accepts_translation(monkeypatch, capsys):
+    # 始终丢失链接:3 次尝试(1 次初译 + 2 次重译)后采用最后一次译文
     outputs = iter(["坏译文", "还是坏", "依然坏"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
-    result = translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096)
-    assert result == "[a](https://x)"
+    result = translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096, repair=2)
+    assert result == "依然坏"
 
 
 def test_chunk_repair_warning_names_source(monkeypatch, capsys):
     # 修复警告必须携带文件路径,批量模式下才能定位问题文件
     outputs = iter(["坏译文", "还是坏", "依然坏"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
-    result = translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096, source="docs/a.md")
-    assert result == "[a](https://x)"
+    result = translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096,
+                                         source="docs/a.md", repair=2)
+    assert result == "依然坏"
     err = capsys.readouterr().err
     assert "md2zh: 警告: docs/a.md: 块校验失败,重译(1/2)" in err
-    assert "md2zh: 警告: docs/a.md: 块重译耗尽,保留原文" in err
+    assert "md2zh: 警告: docs/a.md: 块重译耗尽,采用译文" in err
 
 
 def test_chunk_repair_warning_without_source_keeps_format(monkeypatch, capsys):
     # 内部直接调用不带 source 时警告格式与现状一致,不出现空前缀
     outputs = iter(["坏译文", "还是坏", "依然坏"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
-    translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096)
+    translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096, repair=2)
     err = capsys.readouterr().err
-    assert "md2zh: 警告: 块重译耗尽,保留原文" in err
+    assert "md2zh: 警告: 块重译耗尽,采用译文" in err
     assert "警告: :" not in err
 
 
 def test_long_warning_names_source(monkeypatch, capsys):
-    # 超长文本分段路径的块级警告同样携带 source
+    # 超长文本分段路径的块级警告同样携带 source,耗尽后采用译文
     outputs = iter(["坏译文", "还是坏", "依然坏"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
     text = "[a](https://x) " + "正文" * 2000  # 单段超 3000 字符,按不可分割块整段处理
-    result = translator._translate_long(text, [], "http://x", "m", mapping={}, source="docs/a.md")
-    assert result == text
-    assert "md2zh: 警告: docs/a.md: 块重译耗尽,保留原文" in capsys.readouterr().err
+    result = translator._translate_long(text, [], "http://x", "m", mapping={},
+                                        source="docs/a.md", repair=2)
+    assert result == "依然坏"
+    assert "md2zh: 警告: docs/a.md: 块重译耗尽,采用译文" in capsys.readouterr().err
 
 
 def test_frontmatter_translated(monkeypatch, tmp_path):
@@ -448,24 +450,28 @@ def test_document_frontmatter_no_repair_warning(monkeypatch, capsys):
 
 
 def test_translate_file_warning_names_path(monkeypatch, tmp_path, capsys):
-    # 端到端:文件模式的块级警告带源文件路径
+    # 端到端:文件模式的块级警告带源文件路径;耗尽后译文文件内容为最后一次译文
     src = tmp_path / "A.md"
     src.write_text("[a](https://x)", encoding="utf-8")
     outputs = iter(["坏译文", "还是坏", "依然坏"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
     result = translator.translate_file(str(src), force=False, glossary=[],
-                                       api_base="http://x", model="m")
-    assert result.status == "ok"  # 回退原文仍为成功
-    assert f"md2zh: 警告: {src}: 块重译耗尽,保留原文" in capsys.readouterr().err
+                                       api_base="http://x", model="m", repair=2)
+    assert result.status == "ok"
+    content = (tmp_path / "A_zh.md").read_text(encoding="utf-8")
+    assert content == "依然坏"
+    assert f"md2zh: 警告: {src}: 块重译耗尽,采用译文" in capsys.readouterr().err
 
 
 def test_run_stdin_warning_names_stdin(monkeypatch, capsys):
-    # stdin 模式:块级警告用 <stdin> 标识
+    # stdin 模式:块级警告用 <stdin> 标识,stdout 为最后一次译文
     outputs = iter(["坏译文", "还是坏", "依然坏"])
     monkeypatch.setattr(sys, "stdin", _FakeStdin("[a](https://x)".encode("utf-8")))
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
-    assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
-    assert "md2zh: 警告: <stdin>: 块重译耗尽,保留原文" in capsys.readouterr().err
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m", repair=2) == translator.EX_OK
+    cap = capsys.readouterr()
+    assert cap.out == "依然坏\n"
+    assert "md2zh: 警告: <stdin>: 块重译耗尽,采用译文" in cap.err
 
 
 def test_long_context_restores_placeholders(monkeypatch):
@@ -527,12 +533,12 @@ def test_chunk_repair_warning_retry_counter_bounded(monkeypatch, capsys):
     # 重译计数器不得越界:耗尽路径恰为 重译(1/2)、重译(2/2),无 重译(3/2)
     outputs = iter(["坏译文", "还是坏", "依然坏"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
-    translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096)
+    translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096, repair=2)
     err = capsys.readouterr().err
     assert "重译(1/2)" in err
     assert "重译(2/2)" in err
     assert "重译(3/2)" not in err
-    assert "块重译耗尽,保留原文" in err
+    assert "块重译耗尽,采用译文" in err
 
 
 def test_chunk_bold_drift_accepted(monkeypatch):
@@ -541,3 +547,39 @@ def test_chunk_bold_drift_accepted(monkeypatch):
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
     result = translator._translate_chunk("**bold** 内容", [], "http://x", "m", 4096)
     assert result == "粗体内容"
+
+
+def test_chunk_default_no_repair_accepts_translation(monkeypatch, capsys):
+    # 默认不重译:校验失败仅警告一次并采用译文,不回退原文
+    calls = {"n": 0}
+    outputs = iter(["坏译文"] * 3)
+
+    def fake(*a, **k):
+        calls["n"] += 1
+        return next(outputs)
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    result = translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096)
+    assert result == "坏译文"
+    assert calls["n"] == 1
+    err = capsys.readouterr().err
+    assert "块校验失败,采用译文" in err
+    assert "重译" not in err
+
+
+def test_chunk_repair_one_attempts_twice(monkeypatch, capsys):
+    # repair=1:恰 2 次调用,耗尽后采用最后一次译文
+    calls = {"n": 0}
+    outputs = iter(["坏译文", "还是坏", "还是坏"])
+
+    def fake(*a, **k):
+        calls["n"] += 1
+        return next(outputs)
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    result = translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096, repair=1)
+    assert result == "还是坏"
+    assert calls["n"] == 2
+    err = capsys.readouterr().err
+    assert "块校验失败,重译(1/1)" in err
+    assert "块重译耗尽,采用译文" in err

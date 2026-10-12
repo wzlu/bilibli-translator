@@ -59,7 +59,7 @@ def _atomic_write(path: str, content: str, newline: str = "\n") -> None:
 
 
 def translate_file(src_path: str, *, force: bool, glossary: list[str],
-                   api_base: str, model: str) -> TranslateResult:
+                   api_base: str, model: str, repair: int = 0) -> TranslateResult:
     """翻译单个文件;已存在译文且未 --force 时跳过。"""
     if not src_path.lower().endswith(".md"):
         return TranslateResult("failed", "不是 .md 文件", EX_NOINPUT)
@@ -75,7 +75,8 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
         # 保持源文件行尾风格:CRLF 源输出 CRLF,LF 源输出 LF
         newline = "\r\n" if "\r\n" in text else "\n"
         text = text.replace("\r\n", "\n").replace("\r", "\n")
-        translated = _translate_document(text, glossary, api_base, model, source=src_path)
+        translated = _translate_document(text, glossary, api_base, model,
+                                         source=src_path, repair=repair)
         _atomic_write(dst_path, translated.replace("\r\n", "\n"), newline=newline)
     except api.TranslateError as e:
         return TranslateResult("failed", f"翻译 API 错误: {e}", EX_TEMPFAIL)
@@ -87,7 +88,7 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
 
 
 def _translate_document(text: str, glossary: list[str], api_base: str, model: str,
-                        *, source: str = "") -> str:
+                        *, source: str = "", repair: int = 0) -> str:
     """文档级翻译:frontmatter 独立翻译,正文按单次/分段策略处理。"""
     fm, rest = markdown.split_frontmatter(text)
     protected, mapping = markdown.protect_code_blocks(rest)
@@ -98,9 +99,11 @@ def _translate_document(text: str, glossary: list[str], api_base: str, model: st
         head = _translate_frontmatter(fm, glossary, api_base, model)
 
     if len(protected) <= SINGLE_CALL_LIMIT:
-        body = _translate_chunk(protected, glossary, api_base, model, MAX_TOKENS_SINGLE, source=source)
+        body = _translate_chunk(protected, glossary, api_base, model, MAX_TOKENS_SINGLE,
+                                source=source, repair=repair)
     else:
-        body = _translate_long(protected, glossary, api_base, model, mapping=mapping, source=source)
+        body = _translate_long(protected, glossary, api_base, model,
+                               mapping=mapping, source=source, repair=repair)
 
     body = markdown.restore_code_blocks(body, mapping)
     if head:
@@ -122,42 +125,46 @@ def _trailing_whitespace(text: str) -> str:
 
 
 def _repair(make_prompt, check, *, api_base: str, model: str,
-            max_tokens: int, label: str, source: str = "") -> tuple[bool, str]:
-    """通用修复循环:校验失败带错误说明重译,重译耗尽返回 (False, "")。
+            max_tokens: int, label: str, source: str = "", retries: int = 0) -> str:
+    """校验驱动的可选重译:失败打印警告,始终返回最后一次译文。
 
-    make_prompt(fix_notes) 构建带修复说明的提示词;check(dst) 返回问题列表,空列表表示通过。
-    source 为来源文件路径(stdin 模式为 "<stdin>"),非空时警告带 "{source}: " 前缀。
+    retries 为校验失败后的重译次数(0 表示不重译);校验只决定是否重试,
+    不回退原文——损坏块以译文形态写出,由警告提示(信任模型取舍)。
     """
     prefix = f"{source}: " if source else ""
     problems: list[str] = []
-    for attempt in range(REPAIR_RETRIES + 1):
+    dst = ""
+    for attempt in range(retries + 1):
         dst = api.translate_text(api_base, model, make_prompt(";".join(problems)), max_tokens)
         problems = check(dst)
         if not problems:
-            return True, dst
-        if attempt < REPAIR_RETRIES:
-            sys.stderr.write(f"md2zh: 警告: {prefix}{label}校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
-    sys.stderr.write(f"md2zh: 警告: {prefix}{label}重译耗尽,保留原文: {';'.join(problems)}\n")
-    return False, ""
+            return dst
+        if attempt < retries:
+            sys.stderr.write(f"md2zh: 警告: {prefix}{label}校验失败,重译({attempt + 1}/{retries}): {';'.join(problems)}\n")
+    if retries:
+        sys.stderr.write(f"md2zh: 警告: {prefix}{label}重译耗尽,采用译文: {';'.join(problems)}\n")
+    else:
+        sys.stderr.write(f"md2zh: 警告: {prefix}{label}校验失败,采用译文: {';'.join(problems)}\n")
+    return dst
 
 
 def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
-                     max_tokens: int, context: str = "", *, source: str = "") -> str:
-    """翻译一段文本:校验失败带错误说明重译,仍失败回退原文。"""
-    ok, dst = _repair(
+                     max_tokens: int, context: str = "", *, source: str = "",
+                     repair: int = 0) -> str:
+    """翻译一段文本:校验失败按 repair 可选重译,始终采用译文。"""
+    dst = _repair(
         make_prompt=lambda fix: api.build_prompt(src, glossary, fix_notes=fix, context=context),
         check=lambda d: _check_block(src, d),
         api_base=api_base, model=model, max_tokens=max_tokens, label="块",
-        source=source,
+        source=source, retries=repair,
     )
-    if not ok:
-        return src
     # 译文经 API strip,回挂源块尾随空白,保持分段边界与文件末尾布局
     return dst + _trailing_whitespace(src)
 
 
 def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
-                    *, mapping: dict[str, str], source: str = "") -> str:
+                    *, mapping: dict[str, str], source: str = "",
+                    repair: int = 0) -> str:
     """超长文本:分段翻译,每段附前段上下文参考保证术语延续。
 
     上下文发送前还原占位符:占位符令牌不进入 API 请求,防止模型把
@@ -170,7 +177,8 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
         # 不可分割的超限块(如大表格)按块长放大输出预算,避免确定性截断
         budget = max(MAX_TOKENS_CHUNK, len(chunk) * 2 + 200)
         translated = _translate_chunk(chunk, glossary, api_base, model,
-                                      budget, context=prev_context, source=source)
+                                      budget, context=prev_context, source=source,
+                                      repair=repair)
         parts.append(translated)
         # 前段上下文:上一段(原文+译文)尾部,先还原占位符再切尾部——
         # 上下文与文件原文同形,且不可能切出半截占位符令牌
@@ -200,10 +208,10 @@ def parse_filelist(path: str) -> list[str]:
 
 
 def run_single(path: str, *, force: bool, glossary: list[str],
-               api_base: str, model: str) -> int:
+               api_base: str, model: str, repair: int = 0) -> int:
     """单文件模式:失败返回具体退出码(65/66/74/75)。"""
     result = translate_file(path, force=force, glossary=glossary,
-                            api_base=api_base, model=model)
+                            api_base=api_base, model=model, repair=repair)
     if result.status == "ok":
         print(result.detail, flush=True)
         return EX_OK
@@ -215,7 +223,7 @@ def run_single(path: str, *, force: bool, glossary: list[str],
 
 
 def run_batch(paths: list[str], *, force: bool, glossary: list[str],
-              api_base: str, model: str,
+              api_base: str, model: str, repair: int = 0,
               ignore_matcher: ignore.IgnoreMatcher | None = None) -> int:
     """批量模式:继续处理所有文件,最后汇总;存在失败返回 EX_PARTIAL。
 
@@ -228,7 +236,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
             ignored += 1
             continue
         result = translate_file(p, force=force, glossary=glossary,
-                                api_base=api_base, model=model)
+                                api_base=api_base, model=model, repair=repair)
         if result.status == "ok":
             print(result.detail, flush=True)
             ok += 1
@@ -242,7 +250,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
     return EX_PARTIAL if failed else EX_OK
 
 
-def run_stdin(*, glossary: list[str], api_base: str, model: str) -> int:
+def run_stdin(*, glossary: list[str], api_base: str, model: str, repair: int = 0) -> int:
     """stdin 模式:读入 Markdown 文本,译文写 stdout(管道过滤器)。"""
     try:
         # utf-8-sig 与文件读取一致:BOM 容忍;stdin 无路径,直接取 buffer 解码
@@ -254,7 +262,8 @@ def run_stdin(*, glossary: list[str], api_base: str, model: str) -> int:
         return EX_OK  # 空输入不调用 API
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     try:
-        translated = _translate_document(text, glossary, api_base, model, source="<stdin>")
+        translated = _translate_document(text, glossary, api_base, model,
+                                         source="<stdin>", repair=repair)
     except api.TranslateError as e:
         print(f"md2zh: 错误: 翻译 API 错误: {e}", file=sys.stderr)
         return EX_TEMPFAIL
