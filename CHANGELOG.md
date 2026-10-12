@@ -5,11 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.2.0] - 2026-10-12
 
 ### 新增
 
 - `md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器
+- `--filelist` 批量模式自动读取当前目录 `.translateignore`,命中文件略过不翻译(精确路径 + 通配模式)
 
 ### 修复
 
@@ -20,6 +21,7 @@
 ### 变更
 
 - `--help` 增加实用示例
+- 批量汇总增加「忽略」计数,格式为 成功/跳过/忽略/失败
 
 ## [0.1.0] - 2026-10-12
 

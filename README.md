@@ -3,8 +3,8 @@
 将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
-![Version](https://img.shields.io/badge/version-0.1.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-88%20passed-brightgreen)
+![Version](https://img.shields.io/badge/version-0.2.0-brightgreen)
+![Tests](https://img.shields.io/badge/tests-114%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -15,6 +15,7 @@
 - [行为约定](#行为约定)
 - [退出码](#退出码)
 - [术语表](#术语表)
+- [忽略列表](#忽略列表)
 - [翻译 API 说明](#翻译-api-说明)
 - [开发](#开发)
 - [项目结构](#项目结构)
@@ -30,6 +31,7 @@
 - 📚 **术语表**:支持自定义术语对照,缺省自动加载用户配置目录默认术语表
 - 🔌 **管道过滤器**:`md2zh -` 从 stdin 读入、译文写 stdout,可直接嵌入 unix 管道;字节保真输出(绕开平台行尾翻译,统一 LF)
 - 🐚 **unix-cli 规范**:stdout 只输出数据——文件/批量模式输出译文路径(可管道),stdin 模式输出译文正文;进度/警告走 stderr;标准退出码;`--help`/`--version` 完备
+- 🚫 **忽略列表**:`--filelist` 批量模式自动读取当前目录 `.translateignore`(精确路径 + 通配模式),命中文件略过不翻译
 
 ## 安装
 
@@ -51,6 +53,7 @@ md2zh ABC.md
 
 # 批量翻译:list.txt 每行一个 md 文件,# 开头的行与空行被忽略
 md2zh --filelist list.txt
+# .translateignore 中列出的文件在批量模式下略过(每行一个路径或通配模式,# 注释)
 
 # 覆盖已存在的译文(默认跳过)
 md2zh ABC.md --force
@@ -62,7 +65,7 @@ md2zh ABC.md --glossary g.json
 cat ABC.md | md2zh -
 ```
 
-单文件失败时返回具体退出码;批量模式下单个文件失败不中断,结束时在 stderr 汇总 `成功 N,跳过 M,失败 K`,存在失败则退出码为 1。
+单文件失败时返回具体退出码;批量模式下单个文件失败不中断,结束时在 stderr 汇总 `成功 N,跳过 M,忽略 L,失败 K`,存在失败则退出码为 1。
 
 完整参数见 `md2zh --help`。
 
@@ -71,7 +74,7 @@ cat ABC.md | md2zh -
 - 代码块与行内代码不翻译(占位符保护,内容不会发送给 API);
 - 译文格式与原文一致:frontmatter 的 key 与 `---` 标记不变、`**` 加黑成对包裹对应译文、链接 url 原样保留、表格行列不变;
 - 校验失败自动重译修复,重试耗尽后该块保留原文并输出警告(文件仍算成功生成);
-- stdout 只输出数据:文件/批量模式输出成功译文路径(每行一个),stdin 模式输出译文正文;进度、跳过提示、警告、汇总全部走 stderr;
+- stdout 只输出数据:文件/批量模式输出成功译文路径(每行一个),stdin 模式输出译文正文;进度、跳过/忽略提示、警告、汇总全部走 stderr;
 - 错误消息格式:`md2zh: 上下文: 信息`;用户可见错误不打印 Python 堆栈;
 - 输出编码 UTF-8;源文件须为 UTF-8(含 BOM 亦可),否则返回退出码 65。
 
@@ -104,6 +107,14 @@ cat ABC.md | md2zh -
 - 未指定时缺省加载 `~/.config/md2zh/glossary.json`(Windows 下为 `%USERPROFILE%\.config\md2zh\glossary.json`),文件不存在则视为无术语表;
 - 优先级:命令行 `--glossary` > 默认文件。
 
+## 忽略列表
+
+`--filelist` 批量模式下自动读取当前目录的 `.translateignore`(文件不存在则视为无规则),每行一条规则:
+
+- 精确路径(相对路径按当前目录解析),或通配模式:`**` 匹配任意层级、`*`/`?` 匹配路径段内字符、`[...]` 字符类;
+- `#` 开头的行与空行被忽略;以 `\` 结尾的模式匹配目录直接子文件;
+- 编码须为 UTF-8(GBK 亦可);命中文件计入汇总的「忽略」数,不算失败。
+
 ## 翻译 API 说明
 
 调用 Bilibili Index-Translate 免费公共接口(OpenAI 兼容):
@@ -120,7 +131,7 @@ POST https://index-translate.bilibili.com/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(88 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(114 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -133,8 +144,8 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 ├── README.md / CHANGELOG.md / LICENSE / CLAUDE.md / pyproject.toml
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
-│                       # checks(格式校验) / translator(编排与批量)
-├── tests/              # 88 项测试,API 全 mock
+│                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
+├── tests/              # 114 项测试,API 全 mock
 ├── data/sample_en.md   # 手工验证样例
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)
@@ -146,6 +157,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 - frontmatter 识别与表格分块采用启发式:复杂嵌套 YAML frontmatter、紧凑表格等边界场景由校验+回退原文兜底,格式正确性优先;
 - 校验失败兜底意味着极端情况下个别块可能保留英文原文,stderr 会给出明确警告;
 - stdin 模式:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出);输出统一 LF(与文件模式行尾保真不同)。
+- 忽略列表通配匹配:`**` 与段内 `*` 语义同 gitignore 子集;无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`),损害有界(多跳过可在 stderr 审计);
 
 ## 参考
 

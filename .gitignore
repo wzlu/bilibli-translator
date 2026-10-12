@@ -6,3 +6,4 @@ reports/
 dist/
 build/
 .superpowers/
+.translateignore
