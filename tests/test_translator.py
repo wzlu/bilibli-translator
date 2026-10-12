@@ -424,3 +424,35 @@ def test_run_batch_ignore_wins_over_force(monkeypatch, tmp_path):
                               api_base="http://x", model="m", ignore_matcher=matcher)
     assert rc == translator.EX_OK
     assert calls["n"] == 0
+
+
+def test_document_frontmatter_warning_names_source(monkeypatch, capsys):
+    # 经 _translate_document 的 frontmatter 修复警告携带 source
+    outputs = iter(["坏译文", "还是坏", "依然坏", "正文译文"])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    text = "---\ntitle: Hello\n---\n\nBody"
+    result = translator._translate_document(text, [], "http://x", "m", source="docs/a.md")
+    assert "title: Hello" in result  # frontmatter 回退原文,结构保留
+    err = capsys.readouterr().err
+    assert "md2zh: 警告: docs/a.md: frontmatter重译耗尽,保留原文" in err
+
+
+def test_translate_file_warning_names_path(monkeypatch, tmp_path, capsys):
+    # 端到端:文件模式的块级警告带源文件路径
+    src = tmp_path / "A.md"
+    src.write_text("[a](https://x)", encoding="utf-8")
+    outputs = iter(["坏译文", "还是坏", "依然坏"])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    result = translator.translate_file(str(src), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"  # 回退原文仍为成功
+    assert f"md2zh: 警告: {src}: 块重译耗尽,保留原文" in capsys.readouterr().err
+
+
+def test_run_stdin_warning_names_stdin(monkeypatch, capsys):
+    # stdin 模式:块级警告用 <stdin> 标识
+    outputs = iter(["坏译文", "还是坏", "依然坏"])
+    monkeypatch.setattr(sys, "stdin", _FakeStdin("[a](https://x)".encode("utf-8")))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
+    assert "md2zh: 警告: <stdin>: 块重译耗尽,保留原文" in capsys.readouterr().err

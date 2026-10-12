@@ -75,7 +75,7 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
         # 保持源文件行尾风格:CRLF 源输出 CRLF,LF 源输出 LF
         newline = "\r\n" if "\r\n" in text else "\n"
         text = text.replace("\r\n", "\n").replace("\r", "\n")
-        translated = _translate_document(text, glossary, api_base, model)
+        translated = _translate_document(text, glossary, api_base, model, source=src_path)
         _atomic_write(dst_path, translated.replace("\r\n", "\n"), newline=newline)
     except api.TranslateError as e:
         return TranslateResult("failed", f"翻译 API 错误: {e}", EX_TEMPFAIL)
@@ -86,7 +86,8 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
     return TranslateResult("ok", dst_path)
 
 
-def _translate_document(text: str, glossary: list[str], api_base: str, model: str) -> str:
+def _translate_document(text: str, glossary: list[str], api_base: str, model: str,
+                        *, source: str = "") -> str:
     """文档级翻译:frontmatter 独立翻译,正文按单次/分段策略处理。"""
     fm, rest = markdown.split_frontmatter(text)
     protected, mapping = markdown.protect_code_blocks(rest)
@@ -94,12 +95,12 @@ def _translate_document(text: str, glossary: list[str], api_base: str, model: st
     if fm is None:
         head = ""
     else:
-        head = _translate_frontmatter(fm, glossary, api_base, model)
+        head = _translate_frontmatter(fm, glossary, api_base, model, source=source)
 
     if len(protected) <= SINGLE_CALL_LIMIT:
-        body = _translate_chunk(protected, glossary, api_base, model, MAX_TOKENS_SINGLE)
+        body = _translate_chunk(protected, glossary, api_base, model, MAX_TOKENS_SINGLE, source=source)
     else:
-        body = _translate_long(protected, glossary, api_base, model)
+        body = _translate_long(protected, glossary, api_base, model, source=source)
 
     body = markdown.restore_code_blocks(body, mapping)
     if head:
@@ -171,12 +172,14 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
     return "".join(parts)
 
 
-def _translate_frontmatter(fm: str, glossary: list[str], api_base: str, model: str) -> str:
+def _translate_frontmatter(fm: str, glossary: list[str], api_base: str, model: str,
+                           *, source: str = "") -> str:
     """frontmatter 独立翻译:仅译 value;校验失败重译,仍失败保留原文。"""
     ok, dst = _repair(
         make_prompt=lambda fix: api.build_frontmatter_prompt(fm, glossary, fix_notes=fix),
         check=lambda d: checks.check_frontmatter(fm, d),
         api_base=api_base, model=model, max_tokens=MAX_TOKENS_SINGLE, label="frontmatter",
+        source=source,
     )
     return dst if ok else fm
 
@@ -246,7 +249,7 @@ def run_stdin(*, glossary: list[str], api_base: str, model: str) -> int:
         return EX_OK  # 空输入不调用 API
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     try:
-        translated = _translate_document(text, glossary, api_base, model)
+        translated = _translate_document(text, glossary, api_base, model, source="<stdin>")
     except api.TranslateError as e:
         print(f"md2zh: 错误: 翻译 API 错误: {e}", file=sys.stderr)
         return EX_TEMPFAIL
