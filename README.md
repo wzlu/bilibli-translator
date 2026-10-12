@@ -3,8 +3,8 @@
 将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
-![Version](https://img.shields.io/badge/version-0.2.3-brightgreen)
-![Tests](https://img.shields.io/badge/tests-128%20passed-brightgreen)
+![Version](https://img.shields.io/badge/version-0.2.4-brightgreen)
+![Tests](https://img.shields.io/badge/tests-127%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -27,7 +27,7 @@
 ## 特性
 
 - 🔒 **代码零泄露**:代码块与行内代码经占位符物理隔离,内容绝不发送给翻译 API
-- 📐 **格式保真**:frontmatter(仅译 value,key 与 `---` 标记不变)、`**` 加黑配对、链接 url、表格行列均与原文一致;CRLF/LF 行尾按源文件原样保持(stdin 模式输出 LF)
+- 📐 **格式保真**:frontmatter(仅译 value,key 与 `---` 标记不变)、链接 url、表格行列均与原文一致;CRLF/LF 行尾按源文件原样保持(stdin 模式输出 LF)
 - 🔁 **自动修复循环**:块级校验失败时携带具体错误说明自动重译(≤2 次),仍失败则该块回退保留原文(格式天然正确),全程无需人工干预
 - 📄 **长文档可靠**:≤15000 字符整文一次调用(术语天然一致);超长文档按逻辑边界分段,每段附前段上下文保证术语延续,超限块自动放大输出预算
 - 📚 **术语表**:支持自定义术语对照,缺省自动加载用户配置目录默认术语表
@@ -74,7 +74,7 @@ cat ABC.md | md2zh -
 ## 行为约定
 
 - 代码块与行内代码不翻译(占位符保护,内容不会发送给 API);
-- 译文格式与原文一致:frontmatter 的 key 与 `---` 标记不变、`**` 加黑成对包裹对应译文、链接 url 原样保留、表格行列不变;
+- 译文格式与原文一致:frontmatter 的 key 与 `---` 标记不变、链接 url 原样保留、表格行列不变;
 - 校验失败自动重译修复,重试耗尽后该块保留原文并输出警告(文件仍算成功生成);
 - stdout 只输出数据:文件/批量模式输出成功译文路径(每行一个),stdin 模式输出译文正文;进度、跳过/忽略提示、警告、汇总全部走 stderr;
 - 错误消息格式:`md2zh: 上下文: 信息`;用户可见错误不打印 Python 堆栈;
@@ -133,7 +133,7 @@ POST https://index-translate.bilibili.com/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(128 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(127 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -155,7 +155,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ├── README.md / CHANGELOG.md / LICENSE / CLAUDE.md / pyproject.toml
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
 │                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
-├── tests/              # 128 项测试,API 全 mock
+├── tests/              # 127 项测试,API 全 mock
 ├── data/sample_en.md   # 手工验证样例
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)

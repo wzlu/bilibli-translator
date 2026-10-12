@@ -2,7 +2,7 @@
 
 ## Overview
 
-将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.2.3。
+将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.2.4。
 
 ## Architecture
 
@@ -12,7 +12,7 @@
 - `translator.py` — 编排层:单文件全流程、修复循环、批量处理、stdin 模式(run_stdin)、原子写;退出码常量全 CLI 唯一出处
 - `api.py` — 术语表加载、提示词构建、流式翻译请求与重试(运行期依赖仅 `requests`)
 - `markdown.py` — 纯文本块解析:frontmatter 拆分、代码块/行内代码占位符保护、逻辑分段
-- `checks.py` — 纯函数块级校验:加黑配对、链接、表格、frontmatter、占位符
+- `checks.py` — 纯函数块级校验:链接、表格、frontmatter、占位符
 - `ignore.py` — 忽略列表解析与通配匹配(精确路径 + `**`/段内通配,UTF-8-sig→GBK 回退)
 
 **核心设计决策:**
@@ -39,7 +39,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(128 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(127 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -87,6 +87,8 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 ```
 
 ## Recent Updates (Updated: 2026-10-12)
+
+v0.2.4 重译计数器修复与加黑校验移除:7777b6b..ca43b2a 共 3 个提交(规格/计划 + 任务 1-2 实施),本提交为文档同步;127/127 测试通过。真实 API 复验结果:见发布说明。
 
 v0.2.3 链接 URL 占位符化与提示词稀疏化:9896253..20f5945 共 3 个提交(规格/计划 + 任务 1-2 实施),本提交为文档同步;128/128 测试通过。链接 URL 以 @@@URL_n@@@ 物理隔离(模型不可见),提示词格式约束并条去枚举;真实 API 验证:失败块 4→2(加黑 3→1),链接残留 1 块为多链接占位符错位(URL 改写已结构性杜绝),已裁决随行发布。
 

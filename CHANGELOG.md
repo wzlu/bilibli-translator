@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.4] - 2026-10-12
+
+### 修复
+
+- 重译计数器越界:耗尽路径不再打印「重译(3/2)」,仅在后续确有重译时打印「重译(x/2)」
+
+### 变更
+
+- 不再校验加黑 ** 标记:块级校验收敛为链接/表格/占位符三重,模型自行增删加黑不再触发重译/回退(取舍:译文可能含不成对 **,由提示词约束与模型自行保持)
+
 ## [0.2.3] - 2026-10-12
 
 ### 修复
@@ -81,7 +91,8 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.4
 [0.2.3]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.3
 [0.2.2]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.2
 [0.2.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.1
