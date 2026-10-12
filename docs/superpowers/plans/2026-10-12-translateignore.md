@@ -578,13 +578,14 @@ def test_run_batch_all_ignored_returns_0(tmp_path, capsys):
     assert "汇总: 成功 0,跳过 0,忽略 1,失败 0" in capsys.readouterr().err
 
 
-def test_run_batch_ignored_and_failed_returns_1(tmp_path, capsys):
-    # 忽略与失败混合:忽略不算失败,存在失败仍退出 1
+def test_run_batch_ignored_and_failed_returns_1(monkeypatch, tmp_path, capsys):
+    # 忽略与失败混合:忽略不算失败,存在失败仍退出 1;mock API 防退化路径真实请求
     p = tmp_path / "a.md"
     p.write_text("# Hi", encoding="utf-8")
     ti = tmp_path / ".translateignore"
     ti.write_text(str(p) + "\n", encoding="utf-8")
     matcher = ignore.load_ignore(str(ti))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
     rc = translator.run_batch([str(p), str(tmp_path / "missing.md")], force=False,
                               glossary=[], api_base="http://x", model="m",
                               ignore_matcher=matcher)
