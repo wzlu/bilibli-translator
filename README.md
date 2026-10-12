@@ -18,8 +18,10 @@
 - [忽略列表](#忽略列表)
 - [翻译 API 说明](#翻译-api-说明)
 - [开发](#开发)
+- [参与贡献](#参与贡献)
 - [项目结构](#项目结构)
 - [已知限制](#已知限制)
+- [参考](#参考)
 - [许可证](#许可证)
 
 ## 特性
@@ -138,6 +140,14 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 - 开发依赖仅 `pytest`;测试与实现遵循严格 TDD;
 - 真实 API 不进自动化测试(免费公共服务,避免限流),手工验证步骤见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;
 - 目录约定:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`。
+
+## 参与贡献
+
+欢迎提交 Issue 与 Pull Request;重大改动建议先开 Issue 讨论方案。
+
+- 代码注释与用户可见输出一律中文;
+- 提交信息以 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 结尾;
+- 开发流程详见 `CLAUDE.md`(严格 TDD 与子代理驱动开发台账)。
 
 ## 项目结构
 
