@@ -52,6 +52,7 @@ def test_glossary_bad_json_exit_65(tmp_path):
 
 
 def test_filelist_mode(monkeypatch, tmp_path, capsys):
+    monkeypatch.chdir(tmp_path)  # 隔离 CWD,避免加载项目根目录真实 .translateignore
     src = tmp_path / "A.md"
     src.write_text("# Hi", encoding="utf-8")
     lst = tmp_path / "list.txt"
@@ -124,3 +125,49 @@ def test_stdin_mode(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == "# 你好\n"
     assert captured.err == ""
+
+
+def test_filelist_ignores_translateignore(monkeypatch, tmp_path, capsys):
+    # 端到端:--filelist 自动读取 CWD 的 .translateignore,命中文件略过
+    monkeypatch.chdir(tmp_path)
+    kept = tmp_path / "keep.md"
+    kept.write_text("# Hi", encoding="utf-8")
+    skipped = tmp_path / "skip.md"
+    skipped.write_text("# Hi", encoding="utf-8")
+    (tmp_path / ".translateignore").write_text(str(skipped) + "\n", encoding="utf-8")
+    lst = tmp_path / "list.txt"
+    lst.write_text(f"{kept}\n{skipped}\n", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    assert cli.main(["--filelist", str(lst)]) == translator.EX_OK
+    captured = capsys.readouterr()
+    assert "md2zh: 忽略 " in captured.err
+    assert "汇总: 成功 1,跳过 0,忽略 1,失败 0" in captured.err
+    assert (tmp_path / "keep_zh.md").exists()
+    assert not (tmp_path / "skip_zh.md").exists()
+
+
+def test_filelist_no_ignore_file(monkeypatch, tmp_path, capsys):
+    # 无 .translateignore 时行为不变:全部翻译,无「忽略」提示
+    monkeypatch.chdir(tmp_path)
+    src = tmp_path / "A.md"
+    src.write_text("# Hi", encoding="utf-8")
+    lst = tmp_path / "list.txt"
+    lst.write_text(str(src) + "\n", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    assert cli.main(["--filelist", str(lst)]) == translator.EX_OK
+    captured = capsys.readouterr()
+    assert "md2zh: 忽略" not in captured.err
+    assert "汇总: 成功 1,跳过 0,忽略 0,失败 0" in captured.err
+
+
+def test_filelist_ignore_gbk(monkeypatch, tmp_path, capsys):
+    # GBK 编码的忽略文件可用(与 ds-translator 对齐)
+    monkeypatch.chdir(tmp_path)
+    skipped = tmp_path / "skip.md"
+    skipped.write_text("# Hi", encoding="utf-8")
+    (tmp_path / ".translateignore").write_bytes((str(skipped) + "\n").encode("gbk"))
+    lst = tmp_path / "list.txt"
+    lst.write_text(str(skipped) + "\n", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    assert cli.main(["--filelist", str(lst)]) == translator.EX_OK
+    assert "忽略 1" in capsys.readouterr().err

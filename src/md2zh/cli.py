@@ -5,7 +5,7 @@ import errno
 import os
 import sys
 
-from md2zh import __version__, api
+from md2zh import __version__, api, ignore
 from md2zh import translator
 
 
@@ -79,8 +79,10 @@ def main(argv: list[str] | None = None) -> int:
                     return translator.EX_DATAERR
                 print(f"md2zh: 错误: 无法读取文件列表 {args.filelist}: {e}", file=sys.stderr)
                 return translator.EX_NOINPUT
+            matcher = ignore.load_ignore()  # 自动读取当前目录 .translateignore
             return translator.run_batch(paths, force=args.force, glossary=glossary,
-                                        api_base=args.api_base, model=args.model)
+                                        api_base=args.api_base, model=args.model,
+                                        ignore_matcher=matcher)
         return translator.run_single(args.file, force=args.force, glossary=glossary,
                                      api_base=args.api_base, model=args.model)
     except KeyboardInterrupt:
