@@ -135,7 +135,8 @@ def _repair(make_prompt, check, *, api_base: str, model: str,
         problems = check(dst)
         if not problems:
             return True, dst
-        sys.stderr.write(f"md2zh: 警告: {prefix}{label}校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
+        if attempt < REPAIR_RETRIES:
+            sys.stderr.write(f"md2zh: 警告: {prefix}{label}校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
     sys.stderr.write(f"md2zh: 警告: {prefix}{label}重译耗尽,保留原文: {';'.join(problems)}\n")
     return False, ""
 

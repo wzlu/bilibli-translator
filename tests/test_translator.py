@@ -511,3 +511,15 @@ def test_translate_file_link_url_restored(monkeypatch, tmp_path):
     assert "https://docs.example.com/a" in content
     assert "[官方文档]" in content
     assert "@@@URL" not in content
+
+
+def test_chunk_repair_warning_retry_counter_bounded(monkeypatch, capsys):
+    # 重译计数器不得越界:耗尽路径恰为 重译(1/2)、重译(2/2),无 重译(3/2)
+    outputs = iter(["坏译文", "还是坏", "依然坏"])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096)
+    err = capsys.readouterr().err
+    assert "重译(1/2)" in err
+    assert "重译(2/2)" in err
+    assert "重译(3/2)" not in err
+    assert "块重译耗尽,保留原文" in err
