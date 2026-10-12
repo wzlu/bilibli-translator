@@ -141,8 +141,11 @@ def translate_text(api_base: str, model: str, prompt: str, max_tokens: int) -> s
                         chunk = json.loads(body)
                     except json.JSONDecodeError:
                         continue
+                    # 网关可能发送非对象分片,跳过而不是崩溃(见 references/call_api.py)
+                    if not isinstance(chunk, dict):
+                        continue
                     choices = chunk.get("choices") or []
-                    if not choices:
+                    if not choices or not isinstance(choices[0], dict):
                         continue
                     delta = choices[0].get("delta") or {}
                     content = delta.get("content")

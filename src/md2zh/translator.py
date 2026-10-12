@@ -39,11 +39,14 @@ def _zh_path(src_path: str) -> str:
     return f"{stem}_zh{ext}"
 
 
-def _atomic_write(path: str, content: str) -> None:
-    """同目录临时文件写入后原子替换,失败时清理临时文件。"""
+def _atomic_write(path: str, content: str, newline: str = "\n") -> None:
+    """同目录临时文件写入后原子替换,失败时清理临时文件。
+
+    newline 控制换行符输出(保持源文件行尾风格)。
+    """
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as f:
             f.write(content)
         os.replace(tmp, path)
     except BaseException:
@@ -65,10 +68,14 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
     if os.path.exists(dst_path) and not force:
         return TranslateResult("skipped", "译文已存在(使用 --force 覆盖)")
     try:
-        with open(src_path, encoding="utf-8-sig") as f:
+        # newline="" 关闭读取期行尾翻译,保留源文件行尾风格供检测;内部管线随后统一为 LF
+        with open(src_path, encoding="utf-8-sig", newline="") as f:
             text = f.read()
+        # 保持源文件行尾风格:CRLF 源输出 CRLF,LF 源输出 LF
+        newline = "\r\n" if "\r\n" in text else "\n"
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
         translated = _translate_document(text, glossary, api_base, model)
-        _atomic_write(dst_path, translated)
+        _atomic_write(dst_path, translated.replace("\r\n", "\n"), newline=newline)
     except api.TranslateError as e:
         return TranslateResult("failed", f"翻译 API 错误: {e}", EX_TEMPFAIL)
     except UnicodeDecodeError as e:
@@ -170,15 +177,18 @@ def _translate_frontmatter(fm: str, glossary: list[str], api_base: str, model: s
 
 
 def parse_filelist(path: str) -> list[str]:
-    """解析文件列表:跳过空行与 # 注释行,行首尾去空白。"""
-    with open(path, encoding="utf-8") as f:
+    """解析文件列表:跳过空行与 # 注释行,行首尾去空白。
+
+    utf-8-sig 兼容带 BOM 的文件列表(如 Windows 记事本保存)。
+    """
+    with open(path, encoding="utf-8-sig") as f:
         return [line.strip() for line in f
                 if line.strip() and not line.lstrip().startswith("#")]
 
 
 def run_single(path: str, *, force: bool, glossary: list[str],
                api_base: str, model: str) -> int:
-    """单文件模式:失败返回具体退出码(66/74/75)。"""
+    """单文件模式:失败返回具体退出码(65/66/74/75)。"""
     result = translate_file(path, force=force, glossary=glossary,
                             api_base=api_base, model=model)
     if result.status == "ok":

@@ -88,6 +88,28 @@ def test_translate_file_api_error(monkeypatch, tmp_path):
     assert result.exit_code == translator.EX_TEMPFAIL
 
 
+def test_translate_file_preserves_crlf(monkeypatch, tmp_path):
+    # CRLF 源文件输出必须保持 CRLF(格式一致)
+    src = tmp_path / "A.md"
+    src.write_bytes(b"# Hello\r\n\r\nBody\r\n")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    result = translator.translate_file(str(src), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"
+    assert (tmp_path / "A_zh.md").read_bytes() == "# 你好\r\n".encode("utf-8")
+
+
+def test_translate_file_preserves_lf(monkeypatch, tmp_path):
+    # LF 源文件输出必须保持 LF(格式一致)
+    src = tmp_path / "A.md"
+    src.write_bytes(b"# Hello\n\nBody\n")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    result = translator.translate_file(str(src), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"
+    assert (tmp_path / "A_zh.md").read_bytes() == "# 你好\n".encode("utf-8")
+
+
 def test_chunk_repair_then_success(monkeypatch):
     # 第一次译文加黑不成对,第二次修复
     outputs = iter(["好 **格式 好", "好 **格式** 好"])
@@ -190,6 +212,13 @@ def test_parse_filelist(tmp_path):
     assert translator.parse_filelist(str(lst)) == ["a.md", "b.md"]
 
 
+def test_parse_filelist_with_bom(tmp_path):
+    # 带 BOM 的文件列表(Windows 记事本保存)首个条目不得被 ﻿ 污染
+    lst = tmp_path / "list.txt"
+    lst.write_bytes("﻿a.md\nb.md\n".encode("utf-8"))
+    assert translator.parse_filelist(str(lst)) == ["a.md", "b.md"]
+
+
 def test_run_single_ok_prints_path(monkeypatch, tmp_path, capsys):
     src = tmp_path / "A.md"
     src.write_text("# Hi", encoding="utf-8")
@@ -211,7 +240,8 @@ def test_run_batch_partial_success(monkeypatch, tmp_path, capsys):
     good = tmp_path / "good.md"
     good.write_text("# Hello", encoding="utf-8")
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
-    paths = [str(good), str(tmp_path / "missing.md")]
+    # 坏文件在前:钉住"失败后继续处理"语义
+    paths = [str(tmp_path / "missing.md"), str(good)]
     rc = translator.run_batch(paths, force=False, glossary=[],
                               api_base="http://x", model="m")
     assert rc == translator.EX_PARTIAL
@@ -219,6 +249,7 @@ def test_run_batch_partial_success(monkeypatch, tmp_path, capsys):
     assert "成功 1" in captured.err
     assert "失败 1" in captured.err
     assert str(tmp_path / "good_zh.md") in captured.out
+    assert (tmp_path / "good_zh.md").exists()
 
 
 def test_run_batch_all_ok_returns_0(monkeypatch, tmp_path):

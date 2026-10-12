@@ -148,3 +148,12 @@ def test_translate_text_empty_result_raises(monkeypatch):
     monkeypatch.setattr(api.requests, "post", fake_post)
     with pytest.raises(api.TranslateError):
         api.translate_text("http://x/v1", "m", "p", 1024)
+
+
+def test_translate_text_skips_non_dict_chunk(monkeypatch):
+    # 网关可能发送非对象分片(如 data: []),应跳过而不是崩溃
+    def fake_post(url, json, timeout, stream, headers=None):
+        return _FakeResponse(["data: []", _sse("好"), "data: [DONE]"])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    assert api.translate_text("http://x/v1", "m", "p", 1024) == "好"
