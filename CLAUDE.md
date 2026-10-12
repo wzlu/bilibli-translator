@@ -87,7 +87,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 └── references/call_api.py   # Bilibili 官方参考实现,保持不动
 ```
 
-## Recent Updates (Updated: 2026-10-12)
+## Recent Updates (Updated: 2026-10-13)
 
 v0.3.0 修复重译开关与不回退语义:0e8aa87..880c704 共 7 个提交(计划 + 任务 1-2 实施),本提交为文档同步;129/129 测试通过。--repair N 开关(默认 0);校验失败一律采用译文,不再回退原文。真实 API 复验:opensre 默认 repair=0 无「保留原文」警告、链接失败块仅 1 次「校验失败,采用译文」警告(默认不重译生效),该块为中译文且无 @@@ 残留;SKILL.md 0 警告;观察项 --repair 2:重译(1/2)→(2/2)→耗尽,链接类重译仍不收敛(与历史一致),耗尽后采用译文。
 
@@ -114,6 +114,7 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - **`references/call_api.py` 是参考实现,不得修改**
 - stdin 模式注意:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出,不调用 API);输出统一 LF(与文件模式行尾保真不同);`run_stdin` 的断管/读写错误分支无专属测试(行为经 main 处理器等价覆盖)
 - 已知限制(终审裁决随行发布):SSE `delta` 为非 dict 时的极端畸形分片未防护(与参考实现同款);表格行跨表按全局下标配对、紧凑表格 `|--|--|` 不识别等启发式边界——最坏后果为无谓重译或该块以损坏译文写出(警告提示),损害有界
+- v0.3.0 已知限制(终审分流随行发布):`repair` 为负值的库级误用会静默产出空译文(CLI `choices` 已拦截,仅直接库调用可达);校验失败被采用的块可能残留字面 `@@@...@@@` 令牌(不回退语义的既定取舍,实测无残留);stdin/批量模式的 `repair` 透传无经 `main()` 的专属测试(与文件模式同构,行为经代码核验与 file 模式测试覆盖)
 - 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
-- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,tag v0.2.0 已推送);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
+- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.3.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
