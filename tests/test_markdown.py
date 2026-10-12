@@ -63,4 +63,14 @@ def test_unclosed_fence_left_as_text():
 def test_multiple_blocks_roundtrip():
     src = "# 标题\n\n```bash\nls\n```\n\n正文 `code` 结束\n"
     protected, mapping = markdown.protect_code_blocks(src)
+    assert len(mapping) == 2
+    assert markdown.restore_code_blocks(protected, mapping) == src
+
+
+def test_nested_fence_not_split():
+    # 4 反引号围栏内含 3 反引号围栏:不得在内层处截断
+    src = "````markdown\n```py\nprint(1)\n```\n````\n"
+    protected, mapping = markdown.protect_code_blocks(src)
+    assert "print(1)" not in protected
+    assert len(mapping) == 1
     assert markdown.restore_code_blocks(protected, mapping) == src

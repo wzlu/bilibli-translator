@@ -22,8 +22,16 @@ def split_frontmatter(text: str) -> tuple[str | None, str]:
     return None, text
 
 
-_FENCE_PREFIX = "```"
 _INLINE_RE = re.compile(r"`[^`\n]+`")
+
+
+def _fence_len(line: str) -> int:
+    """统计行首连续反引号个数(围栏开启/闭合判定依据)。"""
+    stripped = line.lstrip()
+    n = 0
+    while n < len(stripped) and stripped[n] == "`":
+        n += 1
+    return n
 
 
 def protect_code_blocks(text: str) -> tuple[str, dict[str, str]]:
@@ -43,10 +51,12 @@ def _protect_fenced(text: str) -> tuple[str, dict[str, str]]:
     lines = text.splitlines(keepends=True)
     i, n = 0, 0
     while i < len(lines):
-        if lines[i].lstrip().startswith(_FENCE_PREFIX):
+        open_len = _fence_len(lines[i])
+        if open_len >= 3:
             start = i
             i += 1
-            while i < len(lines) and not lines[i].lstrip().startswith(_FENCE_PREFIX):
+            # 闭合围栏必须不少于开启围栏的反引号个数
+            while i < len(lines) and _fence_len(lines[i]) < open_len:
                 i += 1
             if i >= len(lines):  # 未闭合:整段视为普通文本
                 parts.append("".join(lines[start:]))
