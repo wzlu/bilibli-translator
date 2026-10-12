@@ -67,7 +67,9 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
   -h/--help/--version
 ```
 
-**退出码契约:** 0 成功(含全部跳过/回退原文) / 1 批量部分失败 / 64 用法错误 / 65 术语表格式错误或源文件非 UTF-8 / 66 输入不存在 / 74 写失败 / 75 API 临时不可用 / 130 SIGINT / 141 SIGPIPE(下游管道提前关闭)。
+批量模式自动读取当前目录 `.translateignore`(命中文件略过,计入「忽略」统计);无新 CLI 选项。
+
+**退出码契约:** 0 成功(含全部跳过/忽略/回退原文) / 1 批量部分失败 / 64 用法错误 / 65 术语表格式错误或源文件非 UTF-8 / 66 输入不存在 / 74 写失败 / 75 API 临时不可用 / 130 SIGINT / 141 SIGPIPE(下游管道提前关闭)。
 
 **流约定:** stdout 只输出数据(文件/批量模式输出译文路径,每行一个,可管道;stdin 模式输出译文正文);进度、跳过/忽略提示、警告、汇总全部走 stderr;错误消息 GNU 格式 `md2zh: 上下文: 信息`;用户可见错误不打 Python 堆栈。
 
@@ -85,7 +87,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 ## Recent Updates (Updated: 2026-10-12)
 
-v0.2.0 忽略列表功能:481760e..b2d9187 六个任务全部落地,114/114 测试通过。`--filelist` 批量模式自动读取当前目录 `.translateignore`(精确路径 + `**`/段内通配,`UTF-8-sig→GBK` 回退),命中文件略过并计入「忽略」汇总。
+v0.2.0 忽略列表功能:29091d2..0c42ffa 共 18 个提交(SDD 6 任务 × 实施/审查 + 4 次审查修复波),114/114 测试通过,opus 全分支终审 "Ready to merge: Yes",已推送 origin/main 并打 tag v0.2.0。`--filelist` 批量模式自动读取当前目录 `.translateignore`(精确路径 + `**`/段内通配,`UTF-8-sig→GBK` 回退,非法规则警告降级),命中文件略过并计入「忽略」汇总。
 
 v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审 "Ready to merge: Yes",76/76 测试通过,真实 API 手工验证 5/5。执行期经审查修复的计划缺陷:嵌套反引号围栏截断、分段分隔符颠倒、源文奇数加黑校验死锁、提示词装配重复、分段边界焊接/超限块预算/修复循环重复、User-Agent 412、SSE 非 dict 分片防护、换行保真、BOM 文件列表。
 
@@ -98,5 +100,6 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - **`references/call_api.py` 是参考实现,不得修改**
 - stdin 模式注意:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出,不调用 API);输出统一 LF(与文件模式行尾保真不同);`run_stdin` 的断管/读写错误分支无专属测试(行为经 main 处理器等价覆盖)
 - 已知限制(终审裁决随行发布):SSE `delta` 为非 dict 时的极端畸形分片未防护(与参考实现同款);表格行跨表按全局下标配对、frontmatter 冒号启发式、紧凑表格 `|--|--|` 不识别等启发式边界——最坏后果为无谓重译或该块回退原文,损害有界
+- 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
-- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
+- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,tag v0.2.0 已推送);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
