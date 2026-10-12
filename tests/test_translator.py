@@ -156,7 +156,7 @@ def test_long_warning_names_source(monkeypatch, capsys):
     outputs = iter(["坏译文", "还是坏", "依然坏"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
     text = "[a](https://x) " + "正文" * 2000  # 单段超 3000 字符,按不可分割块整段处理
-    result = translator._translate_long(text, [], "http://x", "m", source="docs/a.md")
+    result = translator._translate_long(text, [], "http://x", "m", mapping={}, source="docs/a.md")
     assert result == text
     assert "md2zh: 警告: docs/a.md: 块重译耗尽,保留原文" in capsys.readouterr().err
 
@@ -456,3 +456,36 @@ def test_run_stdin_warning_names_stdin(monkeypatch, capsys):
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
     assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
     assert "md2zh: 警告: <stdin>: 块重译耗尽,保留原文" in capsys.readouterr().err
+
+
+def test_long_context_restores_placeholders(monkeypatch):
+    # 分段上下文不得携带占位符令牌:上一块尾部的行内代码在上下文中必须是还原后的真实代码,
+    # 否则模型会把上一块的占位符带入输出,被判「未知占位符」而整块回退
+    prompts = []
+
+    def fake(*a, **k):
+        prompt = a[2]  # translate_text(api_base, model, prompt, max_tokens)
+        prompts.append(prompt)
+        # 伪译文:回传【源文】原文(占位符与本块一致),校验必然通过
+        return prompt.split("【源文】\n", 1)[1].split("\n\n【约束要求】", 1)[0]
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    chunk1 = "正文段落。" * 570 + " 结尾代码 `code_tail`。"
+    chunk2 = "后续正文。" * 200 + " 代码 `code_2`。"
+    text = chunk1 + "\n\n" + chunk2
+    protected, mapping = translator.markdown.protect_code_blocks(text)
+
+    result = translator._translate_long(protected, [], "http://x", "m", mapping=mapping)
+
+    # 文档级路径:保护 → 分段翻译 → 还原,闭环应还原出原始文本
+    assert translator.markdown.restore_code_blocks(result, mapping) == text
+    assert len(prompts) == 2
+    # 第二块请求携带上下文:截取【上下文参考】与【源文】之间的段落
+    ctx = prompts[1].split("【上下文参考】(仅供术语一致参考,不要翻译本段)\n", 1)[1].split("\n【源文】", 1)[0]
+    assert "`code_tail`" in ctx          # 上一块尾部代码已还原
+    assert "@@@INLINE" not in ctx        # 上下文中无占位符令牌
+    assert "@@@CODEBLOCK" not in ctx
+    # 本块【源文】仍保持占位符保护(代码不出现在源文、占位符在)
+    src = prompts[1].split("【源文】\n", 1)[1].split("\n\n【约束要求】", 1)[0]
+    assert "@@@INLINE_" in src
+    assert "`code_2`" not in src

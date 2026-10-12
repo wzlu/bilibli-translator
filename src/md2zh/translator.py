@@ -100,7 +100,7 @@ def _translate_document(text: str, glossary: list[str], api_base: str, model: st
     if len(protected) <= SINGLE_CALL_LIMIT:
         body = _translate_chunk(protected, glossary, api_base, model, MAX_TOKENS_SINGLE, source=source)
     else:
-        body = _translate_long(protected, glossary, api_base, model, source=source)
+        body = _translate_long(protected, glossary, api_base, model, mapping=mapping, source=source)
 
     body = markdown.restore_code_blocks(body, mapping)
     if head:
@@ -156,8 +156,12 @@ def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
 
 
 def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
-                    *, source: str = "") -> str:
-    """超长文本:分段翻译,每段附前段上下文参考保证术语延续。"""
+                    *, mapping: dict[str, str], source: str = "") -> str:
+    """超长文本:分段翻译,每段附前段上下文参考保证术语延续。
+
+    上下文发送前还原占位符:占位符令牌不进入 API 请求,防止模型把
+    上一块的占位符带入输出而触发「未知占位符」校验失败。
+    """
     parts: list[str] = []
     prev_context = ""
     half = CONTEXT_TAIL // 2
@@ -167,8 +171,11 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
         translated = _translate_chunk(chunk, glossary, api_base, model,
                                       budget, context=prev_context, source=source)
         parts.append(translated)
-        # 前段上下文:上一段(原文+译文)尾部,供下一段术语保持一致
-        prev_context = f"原文: {chunk[-half:]}\n译文: {translated[-half:]}"
+        # 前段上下文:上一段(原文+译文)尾部,先还原占位符再切尾部——
+        # 上下文与文件原文同形,且不可能切出半截占位符令牌
+        src_tail = markdown.restore_code_blocks(chunk, mapping)[-half:]
+        dst_tail = markdown.restore_code_blocks(translated, mapping)[-half:]
+        prev_context = f"原文: {src_tail}\n译文: {dst_tail}"
     return "".join(parts)
 
 
