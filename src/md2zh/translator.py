@@ -238,5 +238,10 @@ def run_stdin(*, glossary: list[str], api_base: str, model: str) -> int:
     except api.TranslateError as e:
         print(f"md2zh: 错误: 翻译 API 错误: {e}", file=sys.stderr)
         return EX_TEMPFAIL
-    print(translated)
+    # buffer 字节写出:绕开平台行尾翻译,与文件模式输出字节一致(换行保真)
+    data = translated.encode("utf-8")
+    if not data.endswith(b"\n"):
+        data += b"\n"
+    sys.stdout.buffer.write(data)
+    sys.stdout.buffer.flush()
     return EX_OK

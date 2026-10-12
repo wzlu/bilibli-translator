@@ -304,3 +304,11 @@ def test_run_stdin_non_utf8_exit_65(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", _FakeStdin("文档".encode("gbk")))
     assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_DATAERR
     assert "Traceback" not in capsys.readouterr().err
+
+
+def test_run_stdin_preserves_trailing_newline(monkeypatch, capsys):
+    # 源文以换行结尾时输出以 \n\n 结尾(与文件模式字节一致),不得再多补一个空行
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(b"# Hi\n"))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好\n")
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
+    assert capsys.readouterr().out == "# 你好\n\n"
