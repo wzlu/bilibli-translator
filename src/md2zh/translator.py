@@ -193,7 +193,7 @@ def run_single(path: str, *, force: bool, glossary: list[str],
     result = translate_file(path, force=force, glossary=glossary,
                             api_base=api_base, model=model)
     if result.status == "ok":
-        print(result.detail)
+        print(result.detail, flush=True)
         return EX_OK
     if result.status == "skipped":
         print(f"md2zh: 跳过 {path}: {result.detail}", file=sys.stderr)
@@ -210,7 +210,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
         result = translate_file(p, force=force, glossary=glossary,
                                 api_base=api_base, model=model)
         if result.status == "ok":
-            print(result.detail)
+            print(result.detail, flush=True)
             ok += 1
         elif result.status == "skipped":
             print(f"md2zh: 跳过 {p}: {result.detail}", file=sys.stderr)
@@ -238,6 +238,7 @@ def run_stdin(*, glossary: list[str], api_base: str, model: str) -> int:
     except api.TranslateError as e:
         print(f"md2zh: 错误: 翻译 API 错误: {e}", file=sys.stderr)
         return EX_TEMPFAIL
+    translated = translated.replace("\r\n", "\n")  # 防 API 中途混入 CRLF,与文件模式输出前折叠一致
     # buffer 字节写出:绕开平台行尾翻译,与文件模式输出字节一致(换行保真)
     data = translated.encode("utf-8")
     if not data.endswith(b"\n"):

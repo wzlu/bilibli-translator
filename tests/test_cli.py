@@ -69,16 +69,36 @@ def test_filelist_non_utf8_exit_65(tmp_path, capsys):
 
 def test_broken_pipe_exit_141(monkeypatch, tmp_path):
     # 下游管道提前关闭(如 md2zh x | head)不得打印堆栈,按 128+SIGPIPE 静默退出
+    # 真实管道在 flush 时失败(缓冲写),故在 flush 上抛错以建模现实
     src = tmp_path / "A.md"
     src.write_text("# Hi", encoding="utf-8")
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
 
     class _BrokenStdout:
         def write(self, s):
-            raise BrokenPipeError
+            return len(s)  # 写入成功,进入缓冲
 
         def flush(self):
-            pass
+            raise BrokenPipeError
+
+    monkeypatch.setattr(sys, "stdout", _BrokenStdout())
+    assert cli.main([str(src)]) == translator.EX_SIGPIPE
+
+
+def test_broken_pipe_einval_exit_141(monkeypatch, tmp_path):
+    # MSYS 文本层管道断开可能抛 OSError EINVAL 而非 BrokenPipeError,同样按 141 静默退出
+    import errno
+
+    src = tmp_path / "A.md"
+    src.write_text("# Hi", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+
+    class _BrokenStdout:
+        def write(self, s):
+            return len(s)
+
+        def flush(self):
+            raise OSError(errno.EINVAL, "Invalid argument")
 
     monkeypatch.setattr(sys, "stdout", _BrokenStdout())
     assert cli.main([str(src)]) == translator.EX_SIGPIPE

@@ -1,6 +1,7 @@
 """命令行入口:参数解析、退出码映射。"""
 
 import argparse
+import errno
 import os
 import sys
 
@@ -85,8 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\nmd2zh: 已中断", file=sys.stderr)
         return translator.EX_SIGINT
-    except BrokenPipeError:
+    except OSError as e:
         # 下游管道提前关闭(如 md2zh x | head):静默按 128+SIGPIPE 退出;
-        # 将 stdout 换到 devnull,避免解释器退出时二次刷新再报错
-        sys.stdout = open(os.devnull, "w")
-        return translator.EX_SIGPIPE
+        # 按类型识别 BrokenPipeError,并按 errno 兜底 MSYS 文本层可能抛出的 EINVAL;
+        # 其余 OSError 维持原有传播行为
+        if isinstance(e, BrokenPipeError) or e.errno in (errno.EPIPE, errno.EINVAL):
+            sys.stdout = open(os.devnull, "w")
+            return translator.EX_SIGPIPE
+        raise

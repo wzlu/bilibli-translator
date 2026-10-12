@@ -312,3 +312,11 @@ def test_run_stdin_preserves_trailing_newline(monkeypatch, capsys):
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好\n")
     assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
     assert capsys.readouterr().out == "# 你好\n\n"
+
+
+def test_run_stdin_folds_mid_text_crlf(monkeypatch, capsys):
+    # API 中途混入 CRLF 时输出前折叠为 LF,保证 LF 源输出 LF(与文件模式一致)
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(b"# Hi"))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好\r\n世界")
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
+    assert capsys.readouterr().out == "# 你好\n世界\n"
