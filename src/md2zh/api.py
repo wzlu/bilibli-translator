@@ -71,6 +71,9 @@ def build_prompt(text: str, glossary: list[str], fix_notes: str = "", context: s
     """构建翻译提示词:【源文】+【约束要求】(格式约束+术语表+修复说明)。"""
     constraints = list(FORMAT_CONSTRAINTS)
     _append_requirements(constraints, glossary, fix_notes)
+    if context:
+        # 上下文仅供术语参考:硬性禁止输出上下文内容,防止模型把参考段带入译文
+        constraints.append("【硬性要求】输出仅包含【源文】的译文,不得翻译或输出【上下文参考】中的任何内容。")
     req_lines = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(constraints))
     parts = ["请将以下文本翻译为中文,并且严格遵循所有约束要求。", ""]
     if context:

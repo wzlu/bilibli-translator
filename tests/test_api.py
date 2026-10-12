@@ -55,6 +55,18 @@ def test_build_prompt_with_context():
     assert "前文参考" in prompt
 
 
+def test_build_prompt_context_adds_isolation_constraint():
+    # 携带上下文时追加硬约束:输出不得包含上下文参考的任何内容
+    prompt = api.build_prompt("x", [], context="前文参考")
+    assert "【硬性要求】输出仅包含【源文】的译文,不得翻译或输出【上下文参考】中的任何内容。" in prompt
+
+
+def test_build_prompt_without_context_has_no_isolation_constraint():
+    # 无上下文时约束行数与现状一致,不出现隔离约束
+    prompt = api.build_prompt("x", [], "")
+    assert "不得翻译或输出【上下文参考】" not in prompt
+
+
 def test_build_frontmatter_prompt():
     prompt = api.build_frontmatter_prompt("---\ntitle: Hi\n---", [], "")
     assert "key 保持不变,只翻译 value" in prompt
