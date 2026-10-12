@@ -722,11 +722,11 @@ def test_filelist_no_ignore_file(monkeypatch, tmp_path, capsys):
 
 
 def test_filelist_ignore_gbk(monkeypatch, tmp_path, capsys):
-    # GBK 编码的忽略文件可用(与 ds-translator 对齐)
+    # GBK 编码的忽略文件可用(与 ds-translator 对齐);混入非 ASCII 注释强制走 GBK 回退分支
     monkeypatch.chdir(tmp_path)
     skipped = tmp_path / "skip.md"
     skipped.write_text("# Hi", encoding="utf-8")
-    (tmp_path / ".translateignore").write_bytes((str(skipped) + "\n").encode("gbk"))
+    (tmp_path / ".translateignore").write_bytes(("# 注释:文档\n" + str(skipped) + "\n").encode("gbk"))
     lst = tmp_path / "list.txt"
     lst.write_text(str(skipped) + "\n", encoding="utf-8")
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
