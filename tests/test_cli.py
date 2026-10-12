@@ -171,3 +171,30 @@ def test_filelist_ignore_gbk(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
     assert cli.main(["--filelist", str(lst)]) == translator.EX_OK
     assert "忽略 1" in capsys.readouterr().err
+
+
+def test_repair_invalid_exits_usage(capsys):
+    # --repair 仅接受 0-2 的整数,非法值走用法错误退出 64
+    for bad in ("3", "-1", "x"):
+        with pytest.raises(SystemExit) as e:
+            cli.main(["--repair", bad, "a.md"])
+        assert e.value.code == translator.EX_USAGE
+    assert "md2zh" in capsys.readouterr().err
+
+
+def test_repair_threads_to_translator(monkeypatch, tmp_path, capsys):
+    # --repair 2 穿透到修复循环:恰 3 次调用;默认(不带选项)恰 1 次
+    src = tmp_path / "A.md"
+    src.write_text("[a](https://x)", encoding="utf-8")
+    calls = {"n": 0}
+
+    def fake(*a, **k):
+        calls["n"] += 1
+        return "坏译文"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    assert cli.main(["--repair", "2", str(src)]) == translator.EX_OK
+    assert calls["n"] == 3
+    calls["n"] = 0
+    assert cli.main(["--force", str(src)]) == translator.EX_OK
+    assert calls["n"] == 1

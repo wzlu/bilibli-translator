@@ -583,3 +583,14 @@ def test_chunk_repair_one_attempts_twice(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "块校验失败,重译(1/1)" in err
     assert "块重译耗尽,采用译文" in err
+
+
+def test_run_stdin_default_no_repair_accepts(monkeypatch, capsys):
+    # stdin 模式默认不重译:校验失败采用译文,stdout 为译文
+    monkeypatch.setattr(sys, "stdin", _FakeStdin("[a](https://x)".encode("utf-8")))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "坏译文")
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m",
+                                repair=0) == translator.EX_OK
+    cap = capsys.readouterr()
+    assert cap.out == "坏译文\n"
+    assert "md2zh: 警告: <stdin>: 块校验失败,采用译文" in cap.err

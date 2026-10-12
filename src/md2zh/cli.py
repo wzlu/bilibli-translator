@@ -36,6 +36,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help=f"翻译 API 地址(默认 {api.DEFAULT_API_BASE})")
     parser.add_argument("--model", default=api.DEFAULT_MODEL,
                         help=f"模型(默认 {api.DEFAULT_MODEL})")
+    parser.add_argument("--repair", type=int, choices=range(3), default=0,
+                        help="校验失败后的重译次数 0-2(默认 0;失败一律采用译文,不回退原文)")
     parser.add_argument("--version", action="version", version=f"md2zh {__version__}")
     parser.epilog = (
         "示例:\n"
@@ -43,7 +45,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "  md2zh --filelist list.txt         批量翻译(每行一个 md 文件)\n"
         "  md2zh ABC.md --force              覆盖已存在的译文\n"
         "  md2zh ABC.md --glossary g.json    指定术语表\n"
-        "  cat ABC.md | md2zh -              管道过滤器(stdin → stdout)"
+        "  cat ABC.md | md2zh -              管道过滤器(stdin → stdout)\n"
+        "  md2zh ABC.md --repair 2            校验失败后重译至多 2 次(默认不重译)"
     )
     args = parser.parse_args(argv)
     if args.file and args.filelist:
@@ -67,7 +70,8 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.file == "-":
             return translator.run_stdin(glossary=glossary,
-                                        api_base=args.api_base, model=args.model)
+                                        api_base=args.api_base, model=args.model,
+                                        repair=args.repair)
 
         if args.filelist:
             try:
@@ -82,9 +86,10 @@ def main(argv: list[str] | None = None) -> int:
             matcher = ignore.load_ignore()  # 自动读取当前目录 .translateignore
             return translator.run_batch(paths, force=args.force, glossary=glossary,
                                         api_base=args.api_base, model=args.model,
-                                        ignore_matcher=matcher)
+                                        ignore_matcher=matcher, repair=args.repair)
         return translator.run_single(args.file, force=args.force, glossary=glossary,
-                                     api_base=args.api_base, model=args.model)
+                                     api_base=args.api_base, model=args.model,
+                                     repair=args.repair)
     except KeyboardInterrupt:
         print("\nmd2zh: 已中断", file=sys.stderr)
         return translator.EX_SIGINT
