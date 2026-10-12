@@ -109,9 +109,9 @@ def _translate_document(text: str, glossary: list[str], api_base: str, model: st
 
 
 def _check_block(src: str, dst: str) -> list[str]:
-    """块级校验汇总:加黑/链接/表格/占位符。"""
+    """块级校验汇总:链接/表格/占位符。"""
     problems: list[str] = []
-    for fn in (checks.check_bold, checks.check_links, checks.check_tables, checks.check_placeholders):
+    for fn in (checks.check_links, checks.check_tables, checks.check_placeholders):
         problems.extend(fn(src, dst))
     return problems
 

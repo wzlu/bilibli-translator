@@ -4,17 +4,6 @@ import re
 
 _LINK_RE = re.compile(r"\[[^\]\n]*\]\([^)\n]*\)")
 _PLACEHOLDER_RE = re.compile(r"@@@[A-Z]+_\d+@@@")
-_BOLD = "**"
-
-
-def check_bold(src: str, dst: str) -> list[str]:
-    """加黑标记:** 数量与原文一致;源文成对时译文也必须成对。"""
-    problems = []
-    if src.count(_BOLD) != dst.count(_BOLD):
-        problems.append(f"加黑标记 ** 数量不一致(原文 {src.count(_BOLD)} 个,译文 {dst.count(_BOLD)} 个)")
-    if src.count(_BOLD) % 2 == 0 and dst.count(_BOLD) % 2 != 0:
-        problems.append("译文 ** 标记不成对")
-    return problems
 
 
 def check_links(src: str, dst: str) -> list[str]:

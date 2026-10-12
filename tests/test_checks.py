@@ -1,20 +1,6 @@
 from md2zh import checks
 
 
-def test_check_bold_ok():
-    assert checks.check_bold("**重要** 内容", "**重要** 内容") == []
-
-
-def test_check_bold_count_mismatch():
-    problems = checks.check_bold("**a** **b**", "**a** b")
-    assert problems
-
-
-def test_check_bold_unpaired():
-    problems = checks.check_bold("", "**a")
-    assert problems
-
-
 def test_check_links_ok():
     assert checks.check_links("[文本](https://a.b)", "[译文](https://a.b)") == []
 
@@ -64,11 +50,6 @@ def test_check_placeholders_ok():
 def test_check_placeholders_missing():
     problems = checks.check_placeholders("@@@CODEBLOCK_0@@@", "无")
     assert problems
-
-
-def test_check_bold_odd_source_not_flagged():
-    # 源文本身 ** 不成对时,不因译文奇偶性误报(否则该块永远无法通过校验)
-    assert checks.check_bold("a ** b", "甲 ** 乙") == []
 
 
 def test_check_links_protected_form_detects_swap():

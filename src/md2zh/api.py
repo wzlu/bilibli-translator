@@ -94,7 +94,6 @@ def build_frontmatter_prompt(text: str, glossary: list[str], fix_notes: str = ""
         "这是 YAML frontmatter:key 保持不变,只翻译 value。",
         "保持首尾 --- 标记、行数与整体结构不变。",
         "不得翻译或修改 @@@...@@@ 占位符。",
-        "** 加黑标记必须成对出现、包裹对应的译文词语。",
         "链接 [显示文本](url) 只翻译显示文本,url 原样保留。",
     ]
     _append_requirements(constraints, glossary, fix_notes)

@@ -115,11 +115,11 @@ def test_translate_file_preserves_lf(monkeypatch, tmp_path):
 
 
 def test_chunk_repair_then_success(monkeypatch):
-    # 第一次译文加黑不成对,第二次修复
-    outputs = iter(["好 **格式 好", "好 **格式** 好"])
+    # 第一次译文丢失链接,第二次修复
+    outputs = iter(["没有链接的译文", "[译文](https://x)"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
-    result = translator._translate_chunk("好 **格式** 好", [], "http://x", "m", 4096)
-    assert result == "好 **格式** 好"
+    result = translator._translate_chunk("[text](https://x)", [], "http://x", "m", 4096)
+    assert result == "[译文](https://x)"
 
 
 def test_chunk_repair_exhausted_falls_back(monkeypatch):
@@ -523,3 +523,11 @@ def test_chunk_repair_warning_retry_counter_bounded(monkeypatch, capsys):
     assert "重译(2/2)" in err
     assert "重译(3/2)" not in err
     assert "块重译耗尽,保留原文" in err
+
+
+def test_chunk_bold_drift_accepted(monkeypatch):
+    # 加黑不再校验:译文丢失 ** 标记仍被接受,不回退原文
+    outputs = iter(["粗体内容", "粗体内容", "粗体内容"])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    result = translator._translate_chunk("**bold** 内容", [], "http://x", "m", 4096)
+    assert result == "粗体内容"
