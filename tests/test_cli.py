@@ -1,3 +1,4 @@
+import io
 import sys
 
 import pytest
@@ -89,3 +90,16 @@ def test_help_contains_examples(capsys):
     assert e.value.code == 0
     out = capsys.readouterr().out
     assert "示例:\n  md2zh ABC.md" in out  # 示例逐行展示,不被折叠成一段
+
+def test_stdin_mode(monkeypatch, capsys):
+    # md2zh - 从 stdin 读入,译文写 stdout,stderr 无输出
+    class _FakeStdin:
+        def __init__(self, data: bytes):
+            self.buffer = io.BytesIO(data)
+
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(b"# Hi"))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    assert cli.main(["-"]) == translator.EX_OK
+    captured = capsys.readouterr()
+    assert captured.out == "# 你好\n"
+    assert captured.err == ""

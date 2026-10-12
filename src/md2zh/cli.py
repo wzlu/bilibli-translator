@@ -63,6 +63,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"md2zh: 错误: {e}", file=sys.stderr)
             return translator.EX_DATAERR
 
+        if args.file == "-":
+            return translator.run_stdin(glossary=glossary,
+                                        api_base=args.api_base, model=args.model)
+
         if args.filelist:
             try:
                 paths = translator.parse_filelist(args.filelist)
