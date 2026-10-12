@@ -1,3 +1,6 @@
+import io
+import sys
+
 from md2zh import api
 from md2zh import translator
 
@@ -262,3 +265,42 @@ def test_run_batch_all_ok_returns_0(monkeypatch, tmp_path):
     rc = translator.run_batch(files, force=False, glossary=[],
                               api_base="http://x", model="m")
     assert rc == translator.EX_OK
+
+
+class _FakeStdin:
+    """仅提供 run_stdin 需要的 .buffer 字节流。"""
+
+    def __init__(self, data: bytes):
+        self.buffer = io.BytesIO(data)
+
+
+def test_run_stdin_ok(monkeypatch, capsys):
+    # stdin 模式:BOM 容忍,译文写 stdout,stderr 无输出
+    monkeypatch.setattr(sys, "stdin", _FakeStdin("﻿# Hi".encode("utf-8")))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
+    captured = capsys.readouterr()
+    assert captured.out == "# 你好\n"
+    assert captured.err == ""
+
+
+def test_run_stdin_empty_skips_api(monkeypatch, capsys):
+    # 空输入直接成功退出,不调用 API
+    calls = {"n": 0}
+
+    def fake(*a, **k):
+        calls["n"] += 1
+        return ""
+
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(b"   \n"))
+    monkeypatch.setattr(api, "translate_text", fake)
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_OK
+    assert calls["n"] == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_run_stdin_non_utf8_exit_65(monkeypatch, capsys):
+    # 非 UTF-8 stdin 返回 EX_DATAERR,不打印堆栈
+    monkeypatch.setattr(sys, "stdin", _FakeStdin("文档".encode("gbk")))
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m") == translator.EX_DATAERR
+    assert "Traceback" not in capsys.readouterr().err

@@ -16,6 +16,7 @@ EX_NOINPUT = 66      # 输入文件不存在
 EX_IOERR = 74        # 输出写入失败
 EX_TEMPFAIL = 75     # 翻译 API 临时不可用
 EX_SIGINT = 130
+EX_SIGPIPE = 141      # 下游管道提前关闭(128+SIGPIPE)
 
 # 翻译策略常量(规格 §11)
 SINGLE_CALL_LIMIT = 15000   # 可译文本超过该长度则分段
@@ -219,3 +220,23 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
             failed += 1
     print(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},失败 {failed}", file=sys.stderr)
     return EX_PARTIAL if failed else EX_OK
+
+
+def run_stdin(*, glossary: list[str], api_base: str, model: str) -> int:
+    """stdin 模式:读入 Markdown 文本,译文写 stdout(管道过滤器)。"""
+    try:
+        # utf-8-sig 与文件读取一致:BOM 容忍;stdin 无路径,直接取 buffer 解码
+        text = sys.stdin.buffer.read().decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"md2zh: 错误: 读取 stdin 失败: {e}", file=sys.stderr)
+        return EX_DATAERR if isinstance(e, UnicodeDecodeError) else EX_IOERR
+    if not text.strip():
+        return EX_OK  # 空输入不调用 API
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    try:
+        translated = _translate_document(text, glossary, api_base, model)
+    except api.TranslateError as e:
+        print(f"md2zh: 错误: 翻译 API 错误: {e}", file=sys.stderr)
+        return EX_TEMPFAIL
+    print(translated)
+    return EX_OK
