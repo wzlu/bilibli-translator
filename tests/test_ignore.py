@@ -155,3 +155,12 @@ def test_unpaired_bracket_in_wildcard_pattern(tmp_path):
     m = ignore.load_ignore(str(f))
     assert m.is_ignored("D:\\x\\a[bc.md")
     assert not m.is_ignored("D:\\x\\ab.md")
+
+
+def test_load_directory_warns_empty(tmp_path, capsys):
+    # 忽略路径为目录等 OSError 场景:警告 + 空表(§8 降级)
+    d = tmp_path / "asdir"
+    d.mkdir()
+    m = ignore.load_ignore(str(d))
+    assert not m.is_ignored("D:\\x\\a.md")
+    assert "md2zh: 警告" in capsys.readouterr().err

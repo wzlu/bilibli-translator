@@ -58,8 +58,9 @@ class IgnoreMatcher:
         self._exact = exact
         regexes: list[re.Pattern] = []
         for p in patterns:
+            pattern = ("" if _is_absolute_pattern(p) else ".*") + _pattern_regex(p)
             try:
-                regexes.append(re.compile(("" if _is_absolute_pattern(p) else ".*") + _pattern_regex(p)))
+                regexes.append(re.compile(pattern))
             except re.error as e:
                 # 非法模式(如写错的字符类)按 §8 降级:警告并跳过该规则
                 sys.stderr.write(f"md2zh: 警告: 忽略规则无效,已跳过: {p}: {e}\n")
@@ -71,6 +72,12 @@ class IgnoreMatcher:
         if norm in self._exact:
             return True
         return any(rx.fullmatch(norm) for rx in self._regexes)
+
+
+def _warn_unreadable(path: str, e: Exception) -> IgnoreMatcher:
+    """忽略文件读取失败统一告警:返回空匹配器。"""
+    sys.stderr.write(f"md2zh: 警告: 无法读取忽略文件 {path},不使用忽略规则: {e}\n")
+    return IgnoreMatcher(set(), [])
 
 
 def load_ignore(path: str = ".translateignore") -> IgnoreMatcher:
@@ -86,11 +93,9 @@ def load_ignore(path: str = ".translateignore") -> IgnoreMatcher:
             with open(path, encoding="gbk") as f:
                 lines = f.read().splitlines()
         except (UnicodeDecodeError, OSError) as e:
-            sys.stderr.write(f"md2zh: 警告: 无法读取忽略文件 {path},不使用忽略规则: {e}\n")
-            return IgnoreMatcher(set(), [])
+            return _warn_unreadable(path, e)
     except OSError as e:
-        sys.stderr.write(f"md2zh: 警告: 无法读取忽略文件 {path},不使用忽略规则: {e}\n")
-        return IgnoreMatcher(set(), [])
+        return _warn_unreadable(path, e)
     exact: set[str] = set()
     patterns: list[str] = []
     for line in lines:
