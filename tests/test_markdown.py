@@ -111,3 +111,27 @@ def test_chunk_merged_tables_join_consistent():
     table2 = "| c | d |\n| 3 | 4 |\n"
     text = table1 + "\n\n" + table2 + "\n\n后语"
     assert "".join(markdown.chunk_text(text)) == text
+
+
+def test_links_url_protected():
+    src = "见 [文档](https://a.dev/x) 与 [下载](https://b.dev/y)"
+    protected, mapping = markdown.protect_code_blocks(src)
+    assert "https://a.dev/x" not in protected
+    assert "https://b.dev/y" not in protected
+    assert "[文档]" in protected          # 显示文本保留
+    assert "[下载]" in protected
+    assert "@@@URL_0@@@" in protected
+    assert "@@@URL_1@@@" in protected
+    assert mapping["@@@URL_0@@@"] == "https://a.dev/x"
+    assert mapping["@@@URL_1@@@"] == "https://b.dev/y"
+    assert markdown.restore_code_blocks(protected, mapping) == src
+
+
+def test_links_inside_inline_code_not_protected():
+    # 行内代码整体隔离在先,反引号内的假链接不得被 URL 保护触及
+    src = "见 `[x](https://in.code)` 与 [真](https://real.dev)"
+    protected, mapping = markdown.protect_code_blocks(src)
+    assert "https://real.dev" not in protected
+    assert mapping.get("@@@INLINE_0@@@") == "`[x](https://in.code)`"
+    assert "@@@URL_0@@@" in protected
+    assert markdown.restore_code_blocks(protected, mapping) == src

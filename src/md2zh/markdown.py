@@ -35,14 +35,16 @@ def _fence_len(line: str) -> int:
 
 
 def protect_code_blocks(text: str) -> tuple[str, dict[str, str]]:
-    """围栏代码块与行内代码替换为占位符,返回 (保护后文本, 占位符→原文 映射)。
+    """围栏代码块、行内代码与链接 URL 替换为占位符,返回 (保护后文本, 占位符→原文 映射)。
 
-    先处理围栏(其内部的行内代码不重复保护),再处理行内代码;
+    先处理围栏(其内部的行内代码不重复保护),再处理行内代码,
+    最后处理链接 URL(此时反引号内的假链接已被行内占位符隔离);
     未闭合的围栏视为普通文本。
     """
     text, fenced = _protect_fenced(text)
     text, inline = _protect_inline(text)
-    return text, {**fenced, **inline}
+    text, links = _protect_links(text)
+    return text, {**fenced, **inline, **links}
 
 
 def _protect_fenced(text: str) -> tuple[str, dict[str, str]]:
@@ -85,6 +87,24 @@ def _protect_inline(text: str) -> tuple[str, dict[str, str]]:
         return ph
 
     return _INLINE_RE.sub(repl, text), mapping
+
+
+_LINK_URL_RE = re.compile(r"(\[[^\]\n]*\]\()([^)\n]*)(\))")
+
+
+def _protect_links(text: str) -> tuple[str, dict[str, str]]:
+    """链接 URL 替换为占位符,显示文本保留照常翻译。"""
+    mapping: dict[str, str] = {}
+    n = 0
+
+    def repl(m: re.Match) -> str:
+        nonlocal n
+        ph = f"@@@URL_{n}@@@"
+        mapping[ph] = m.group(2)
+        n += 1
+        return f"{m.group(1)}{ph}{m.group(3)}"
+
+    return _LINK_URL_RE.sub(repl, text), mapping
 
 
 def restore_code_blocks(text: str, mapping: dict[str, str]) -> str:

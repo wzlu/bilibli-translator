@@ -489,3 +489,25 @@ def test_long_context_restores_placeholders(monkeypatch):
     src = prompts[1].split("【源文】\n", 1)[1].split("\n\n【约束要求】", 1)[0]
     assert "@@@INLINE_" in src
     assert "`code_2`" not in src
+
+
+def test_translate_file_link_url_restored(monkeypatch, tmp_path):
+    # 链接 URL 占位符化:模型只能看到占位符,译文还原后 url 原样、无占位符残留
+    src = tmp_path / "A.md"
+    src.write_text("# 标题\n\n见 [官方文档](https://docs.example.com/a) 了解。", encoding="utf-8")
+
+    def fake(*a, **k):
+        prompt = a[2]
+        # 模型视角:真实 url 不得出现在任何 API 请求中
+        assert "https://docs.example.com/a" not in prompt
+        # 回传【源文】原文:占位符与本块一致,校验通过
+        return prompt.split("【源文】\n", 1)[1].split("\n\n【约束要求】", 1)[0]
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    result = translator.translate_file(str(src), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"
+    content = (tmp_path / "A_zh.md").read_text(encoding="utf-8")
+    assert "https://docs.example.com/a" in content
+    assert "[官方文档]" in content
+    assert "@@@URL" not in content

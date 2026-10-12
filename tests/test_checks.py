@@ -69,3 +69,9 @@ def test_check_placeholders_missing():
 def test_check_bold_odd_source_not_flagged():
     # 源文本身 ** 不成对时,不因译文奇偶性误报(否则该块永远无法通过校验)
     assert checks.check_bold("a ** b", "甲 ** 乙") == []
+
+
+def test_check_links_protected_form_detects_swap():
+    # URL 占位符化后,链接检查在保护形态下工作:占位符序列不一致即捕获
+    problems = checks.check_links("[a](@@@URL_0@@@)", "[a](@@@URL_1@@@)")
+    assert problems
