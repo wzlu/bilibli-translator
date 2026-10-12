@@ -167,3 +167,45 @@ def _translate_frontmatter(fm: str, glossary: list[str], api_base: str, model: s
         api_base=api_base, model=model, max_tokens=MAX_TOKENS_SINGLE, label="frontmatter",
     )
     return dst if ok else fm
+
+
+def parse_filelist(path: str) -> list[str]:
+    """解析文件列表:跳过空行与 # 注释行,行首尾去空白。"""
+    with open(path, encoding="utf-8") as f:
+        return [line.strip() for line in f
+                if line.strip() and not line.lstrip().startswith("#")]
+
+
+def run_single(path: str, *, force: bool, glossary: list[str],
+               api_base: str, model: str) -> int:
+    """单文件模式:失败返回具体退出码(66/74/75)。"""
+    result = translate_file(path, force=force, glossary=glossary,
+                            api_base=api_base, model=model)
+    if result.status == "ok":
+        print(result.detail)
+        return EX_OK
+    if result.status == "skipped":
+        print(f"md2zh: 跳过 {path}: {result.detail}", file=sys.stderr)
+        return EX_OK
+    print(f"md2zh: 失败 {path}: {result.detail}", file=sys.stderr)
+    return result.exit_code
+
+
+def run_batch(paths: list[str], *, force: bool, glossary: list[str],
+              api_base: str, model: str) -> int:
+    """批量模式:继续处理所有文件,最后汇总;存在失败返回 EX_PARTIAL。"""
+    ok = skipped = failed = 0
+    for p in paths:
+        result = translate_file(p, force=force, glossary=glossary,
+                                api_base=api_base, model=model)
+        if result.status == "ok":
+            print(result.detail)
+            ok += 1
+        elif result.status == "skipped":
+            print(f"md2zh: 跳过 {p}: {result.detail}", file=sys.stderr)
+            skipped += 1
+        else:
+            print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)
+            failed += 1
+    print(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},失败 {failed}", file=sys.stderr)
+    return EX_PARTIAL if failed else EX_OK

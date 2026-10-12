@@ -182,3 +182,52 @@ def test_oversized_chunk_budget_scaled(monkeypatch, tmp_path):
     assert result.status == "ok"
     assert budgets[0] > translator.MAX_TOKENS_CHUNK  # 预算被放大
     assert budgets[0] >= len(big_table) * 2  # 覆盖两倍块长的输出需求
+
+
+def test_parse_filelist(tmp_path):
+    lst = tmp_path / "list.txt"
+    lst.write_text("# 注释\n\na.md\n  b.md  \n\n", encoding="utf-8")
+    assert translator.parse_filelist(str(lst)) == ["a.md", "b.md"]
+
+
+def test_run_single_ok_prints_path(monkeypatch, tmp_path, capsys):
+    src = tmp_path / "A.md"
+    src.write_text("# Hi", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    rc = translator.run_single(str(src), force=False, glossary=[],
+                               api_base="http://x", model="m")
+    assert rc == translator.EX_OK
+    assert str(tmp_path / "A_zh.md") in capsys.readouterr().out
+
+
+def test_run_single_missing_returns_66(tmp_path, capsys):
+    rc = translator.run_single(str(tmp_path / "no.md"), force=False, glossary=[],
+                               api_base="http://x", model="m")
+    assert rc == translator.EX_NOINPUT
+    assert "md2zh:" in capsys.readouterr().err
+
+
+def test_run_batch_partial_success(monkeypatch, tmp_path, capsys):
+    good = tmp_path / "good.md"
+    good.write_text("# Hello", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    paths = [str(good), str(tmp_path / "missing.md")]
+    rc = translator.run_batch(paths, force=False, glossary=[],
+                              api_base="http://x", model="m")
+    assert rc == translator.EX_PARTIAL
+    captured = capsys.readouterr()
+    assert "成功 1" in captured.err
+    assert "失败 1" in captured.err
+    assert str(tmp_path / "good_zh.md") in captured.out
+
+
+def test_run_batch_all_ok_returns_0(monkeypatch, tmp_path):
+    files = []
+    for name in ("a.md", "b.md"):
+        p = tmp_path / name
+        p.write_text("# Hi", encoding="utf-8")
+        files.append(str(p))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    rc = translator.run_batch(files, force=False, glossary=[],
+                              api_base="http://x", model="m")
+    assert rc == translator.EX_OK
