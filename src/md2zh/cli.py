@@ -1,6 +1,7 @@
 """命令行入口:参数解析、退出码映射。"""
 
 import argparse
+import os
 import sys
 
 from md2zh import __version__, api
@@ -21,6 +22,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = _Parser(
         prog="md2zh",
         description="将英文 Markdown 文件翻译为中文,保存为 *_zh.md(同目录)。",
+        formatter_class=argparse.RawDescriptionHelpFormatter,  # 保留 epilog 示例的换行
     )
     parser.add_argument("file", nargs="?", metavar="FILE", help="要翻译的 Markdown 文件")
     parser.add_argument("--filelist", metavar="LIST",
@@ -34,6 +36,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", default=api.DEFAULT_MODEL,
                         help=f"模型(默认 {api.DEFAULT_MODEL})")
     parser.add_argument("--version", action="version", version=f"md2zh {__version__}")
+    parser.epilog = (
+        "示例:\n"
+        "  md2zh ABC.md                      翻译单个文件,生成 ABC_zh.md\n"
+        "  md2zh --filelist list.txt         批量翻译(每行一个 md 文件)\n"
+        "  md2zh ABC.md --force              覆盖已存在的译文\n"
+        "  md2zh ABC.md --glossary g.json    指定术语表"
+    )
     args = parser.parse_args(argv)
     if args.file and args.filelist:
         parser.error("FILE 与 --filelist 不能同时使用")
@@ -71,3 +80,8 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\nmd2zh: 已中断", file=sys.stderr)
         return translator.EX_SIGINT
+    except BrokenPipeError:
+        # 下游管道提前关闭(如 md2zh x | head):静默按 128+SIGPIPE 退出;
+        # 将 stdout 换到 devnull,避免解释器退出时二次刷新再报错
+        sys.stdout = open(os.devnull, "w")
+        return translator.EX_SIGPIPE

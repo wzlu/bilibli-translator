@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from md2zh import api
@@ -63,3 +65,27 @@ def test_filelist_non_utf8_exit_65(tmp_path, capsys):
     lst.write_bytes("文档.md\n".encode("gbk"))
     assert cli.main(["--filelist", str(lst)]) == translator.EX_DATAERR
     assert "Traceback" not in capsys.readouterr().err
+
+def test_broken_pipe_exit_141(monkeypatch, tmp_path):
+    # 下游管道提前关闭(如 md2zh x | head)不得打印堆栈,按 128+SIGPIPE 静默退出
+    src = tmp_path / "A.md"
+    src.write_text("# Hi", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+
+    class _BrokenStdout:
+        def write(self, s):
+            raise BrokenPipeError
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(sys, "stdout", _BrokenStdout())
+    assert cli.main([str(src)]) == translator.EX_SIGPIPE
+
+def test_help_contains_examples(capsys):
+    # --help 应包含实用示例,加速上手
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--help"])
+    assert e.value.code == 0
+    out = capsys.readouterr().out
+    assert "示例:\n  md2zh ABC.md" in out  # 示例逐行展示,不被折叠成一段

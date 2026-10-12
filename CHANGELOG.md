@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- 下游管道提前关闭(如 `md2zh x | head`)按 128+SIGPIPE 静默退出,不再打印堆栈
+
+### 变更
+
+- `--help` 增加实用示例
+
 ## [0.1.0] - 2026-10-12
 
 首个版本:基于 Bilibili Index-Translate 免费翻译 API 的英文 Markdown 转中文命令行工具。
@@ -41,4 +51,5 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.1.0

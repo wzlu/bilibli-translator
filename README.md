@@ -83,6 +83,7 @@ md2zh ABC.md --glossary g.json
 | 74 | 输出文件写入失败 |
 | 75 | 翻译 API 临时不可用(重试耗尽) |
 | 130 | 用户 Ctrl-C 中断 |
+| 141 | 下游管道提前关闭(SIGPIPE) |
 
 ## 术语表
 
