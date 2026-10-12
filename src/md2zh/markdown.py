@@ -125,7 +125,7 @@ def _logical_blocks(text: str) -> list[str]:
         para = parts[i]
         sep = parts[i + 1] if i + 1 < len(parts) else ""
         if para and _is_table_or_list(para) and blocks and _is_table_or_list(blocks[-1]):
-            blocks[-1] += sep + para
+            blocks[-1] += para + sep
             continue
         blocks.append(para + sep)
     return blocks

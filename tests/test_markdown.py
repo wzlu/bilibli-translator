@@ -94,3 +94,19 @@ def test_chunk_splits_at_limit():
     assert len(chunks) >= 2
     assert max(len(c) for c in chunks) <= 100
     assert "".join(chunks) == text
+
+
+def test_chunk_merged_list_join_consistent():
+    # 空行分隔的连续列表项进入合并分支:拼接必须与原文一致
+    text = "- a\n\n- b\n\n- c\n"
+    chunks = markdown.chunk_text(text)
+    assert "".join(chunks) == text
+    assert len(chunks) == 1
+
+
+def test_chunk_merged_tables_join_consistent():
+    # 空行分隔的两个表格进入合并分支:拼接必须与原文一致
+    table1 = "| a | b |\n| 1 | 2 |\n"
+    table2 = "| c | d |\n| 3 | 4 |\n"
+    text = table1 + "\n\n" + table2
+    assert "".join(markdown.chunk_text(text)) == text
