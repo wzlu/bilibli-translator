@@ -76,7 +76,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 ```
 ├── CLAUDE.md / README.md / CHANGELOG.md / LICENSE / pyproject.toml / .gitignore
 ├── src/md2zh/           # 六模块实现(__init__.py 存版本号)
-├── tests/               # pytest:test_markdown / test_checks / test_api / test_translator / test_cli / test_version
+├── tests/               # pytest:test_markdown / test_checks / test_api / test_translator / test_cli / test_version / test_ignore
 ├── data/sample_en.md    # 手工验证样例(真实 API 产物 *_zh.md 不入库)
 ├── reports/             # 测试报告(生成物,gitignore)
 ├── docs/superpowers/    # specs/(规格) 与 plans/(实施计划)
@@ -85,7 +85,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 ## Recent Updates (Updated: 2026-10-12)
 
-v0.2.0 忽略列表功能:481760e..b2d9187 六个任务全部落地,114/114 测试通过。--filelist 批量模式自动读取当前目录 .translateignore(精确路径 + **/段内通配,UTF-8-sig→GBK 回退),命中文件略过并计入「忽略」汇总。
+v0.2.0 忽略列表功能:481760e..b2d9187 六个任务全部落地,114/114 测试通过。`--filelist` 批量模式自动读取当前目录 `.translateignore`(精确路径 + `**`/段内通配,`UTF-8-sig→GBK` 回退),命中文件略过并计入「忽略」汇总。
 
 v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审 "Ready to merge: Yes",76/76 测试通过,真实 API 手工验证 5/5。执行期经审查修复的计划缺陷:嵌套反引号围栏截断、分段分隔符颠倒、源文奇数加黑校验死锁、提示词装配重复、分段边界焊接/超限块预算/修复循环重复、User-Agent 412、SSE 非 dict 分片防护、换行保真、BOM 文件列表。
 

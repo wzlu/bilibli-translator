@@ -59,5 +59,6 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.0
 [0.1.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.1.0
