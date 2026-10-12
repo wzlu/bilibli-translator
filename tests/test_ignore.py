@@ -110,3 +110,48 @@ def test_unpaired_bracket_treated_literal(tmp_path):
     f.write_text("D:\\x\\a[b.md\n", encoding="utf-8")
     m = ignore.load_ignore(str(f))
     assert m.is_ignored("D:\\x\\a[b.md")
+
+
+def test_load_gbk_fallback(tmp_path):
+    # 与 ds-translator 对齐:UTF-8 失败回退 GBK(中文 Windows 常见)
+    f = tmp_path / ".translateignore"
+    f.write_bytes("D:\\x\\文档.md\n".encode("gbk"))
+    m = ignore.load_ignore(str(f))
+    assert m.is_ignored("D:\\x\\文档.md")
+
+
+def test_load_undecodable_warns_empty(tmp_path, capsys):
+    # 两种编码都无法解码:警告后视为空表,不中断翻译
+    f = tmp_path / ".translateignore"
+    f.write_bytes(b"\xff\xff\xff")
+    m = ignore.load_ignore(str(f))
+    assert not m.is_ignored("D:\\x\\a.md")
+    assert "md2zh: 警告" in capsys.readouterr().err
+
+
+def test_bare_directory_line_matches_children(tmp_path):
+    # 裁决:裸目录行(不含通配符)按"直接子文件"语义生效,不静默空转
+    f = tmp_path / ".translateignore"
+    f.write_text("reports\\\n", encoding="utf-8")
+    m = ignore.load_ignore(str(f))
+    assert m.is_ignored("D:\\x\\reports\\a.md")
+    assert not m.is_ignored("D:\\x\\reports\\sub\\a.md")
+
+
+def test_invalid_char_class_warns_and_skips(tmp_path, capsys):
+    # 非法字符类按 §8 降级:警告并跳过该规则,其余规则继续生效
+    f = tmp_path / ".translateignore"
+    f.write_text("src\\a[z-a]*.md\nD:\\x\\b.md\n", encoding="utf-8")
+    m = ignore.load_ignore(str(f))
+    assert not m.is_ignored("D:\\x\\src\\a1.md")
+    assert m.is_ignored("D:\\x\\b.md")
+    assert "md2zh: 警告" in capsys.readouterr().err
+
+
+def test_unpaired_bracket_in_wildcard_pattern(tmp_path):
+    # 通配模式内不成对 [ 按字面处理(补齐 _pattern_regex 该分支覆盖)
+    f = tmp_path / ".translateignore"
+    f.write_text("**\\a[bc.md\n", encoding="utf-8")
+    m = ignore.load_ignore(str(f))
+    assert m.is_ignored("D:\\x\\a[bc.md")
+    assert not m.is_ignored("D:\\x\\ab.md")

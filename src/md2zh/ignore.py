@@ -2,6 +2,7 @@
 
 import os
 import re
+import sys
 
 
 def _norm(p: str) -> str:
@@ -55,10 +56,14 @@ class IgnoreMatcher:
 
     def __init__(self, exact: set[str], patterns: list[str]):
         self._exact = exact
-        self._regexes = [
-            re.compile(("" if _is_absolute_pattern(p) else ".*") + _pattern_regex(p))
-            for p in patterns
-        ]
+        regexes: list[re.Pattern] = []
+        for p in patterns:
+            try:
+                regexes.append(re.compile(("" if _is_absolute_pattern(p) else ".*") + _pattern_regex(p)))
+            except re.error as e:
+                # 非法模式(如写错的字符类)按 §8 降级:警告并跳过该规则
+                sys.stderr.write(f"md2zh: 警告: 忽略规则无效,已跳过: {p}: {e}\n")
+        self._regexes = regexes
 
     def is_ignored(self, path: str) -> bool:
         """命中任一忽略规则返回 True。"""
@@ -69,11 +74,22 @@ class IgnoreMatcher:
 
 
 def load_ignore(path: str = ".translateignore") -> IgnoreMatcher:
-    """读取忽略列表;文件不存在返回空匹配器。"""
+    """读取忽略列表;文件不存在返回空匹配器;解码失败警告后视为空表。"""
     try:
         with open(path, encoding="utf-8-sig") as f:
             lines = f.read().splitlines()
     except FileNotFoundError:
+        return IgnoreMatcher(set(), [])
+    except UnicodeDecodeError:
+        # 与 ds-translator 对齐:UTF-8 失败回退 GBK
+        try:
+            with open(path, encoding="gbk") as f:
+                lines = f.read().splitlines()
+        except (UnicodeDecodeError, OSError) as e:
+            sys.stderr.write(f"md2zh: 警告: 无法读取忽略文件 {path},不使用忽略规则: {e}\n")
+            return IgnoreMatcher(set(), [])
+    except OSError as e:
+        sys.stderr.write(f"md2zh: 警告: 无法读取忽略文件 {path},不使用忽略规则: {e}\n")
         return IgnoreMatcher(set(), [])
     exact: set[str] = set()
     patterns: list[str] = []
@@ -81,11 +97,10 @@ def load_ignore(path: str = ".translateignore") -> IgnoreMatcher:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
+        if line.endswith(("/", "\\")):
+            line += "*"  # 目录形式:先追加段内 * 再分类,裸目录行同样生效
         if _is_glob(line):
-            p = os.path.normcase(line).replace("\\", "/")
-            if p.endswith("/"):
-                p += "*"  # 目录形式:追加段内 * 表示直接子文件
-            patterns.append(p)
+            patterns.append(os.path.normcase(line).replace("\\", "/"))
         else:
             exact.add(_norm(line))
     return IgnoreMatcher(exact, patterns)
