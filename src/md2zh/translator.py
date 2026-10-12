@@ -5,7 +5,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 
-from md2zh import api, markdown
+from md2zh import api, checks, markdown
 
 # 退出码契约(规格 §8),全 CLI 唯一出处
 EX_OK = 0
@@ -71,14 +71,80 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
         _atomic_write(dst_path, translated)
     except api.TranslateError as e:
         return TranslateResult("failed", f"翻译 API 错误: {e}", EX_TEMPFAIL)
+    except UnicodeDecodeError as e:
+        return TranslateResult("failed", f"源文件不是 UTF-8 编码: {e}", EX_DATAERR)
     except OSError as e:
         return TranslateResult("failed", f"读写文件失败: {e}", EX_IOERR)
     return TranslateResult("ok", dst_path)
 
 
 def _translate_document(text: str, glossary: list[str], api_base: str, model: str) -> str:
-    """文档级翻译(基础版:整文单次调用,Task 9 扩展修复循环/frontmatter/分段)。"""
-    protected, mapping = markdown.protect_code_blocks(text)
-    prompt = api.build_prompt(protected, glossary)
-    translated = api.translate_text(api_base, model, prompt, MAX_TOKENS_SINGLE)
-    return markdown.restore_code_blocks(translated, mapping)
+    """文档级翻译:frontmatter 独立翻译,正文按单次/分段策略处理。"""
+    fm, rest = markdown.split_frontmatter(text)
+    protected, mapping = markdown.protect_code_blocks(rest)
+
+    if fm is None:
+        head = ""
+    else:
+        head = _translate_frontmatter(fm, glossary, api_base, model)
+
+    if len(protected) <= SINGLE_CALL_LIMIT:
+        body = _translate_chunk(protected, glossary, api_base, model, MAX_TOKENS_SINGLE)
+    else:
+        body = _translate_long(protected, glossary, api_base, model)
+
+    body = markdown.restore_code_blocks(body, mapping)
+    if head:
+        return f"{head.rstrip()}\n\n{body.lstrip()}"
+    return body
+
+
+def _check_block(src: str, dst: str) -> list[str]:
+    """块级校验汇总:加黑/链接/表格/占位符。"""
+    problems: list[str] = []
+    for fn in (checks.check_bold, checks.check_links, checks.check_tables, checks.check_placeholders):
+        problems.extend(fn(src, dst))
+    return problems
+
+
+def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
+                     max_tokens: int, context: str = "") -> str:
+    """翻译一段文本:校验失败带错误说明重译,仍失败回退原文。"""
+    problems: list[str] = []
+    for attempt in range(REPAIR_RETRIES + 1):
+        prompt = api.build_prompt(src, glossary, fix_notes=";".join(problems), context=context)
+        dst = api.translate_text(api_base, model, prompt, max_tokens)
+        problems = _check_block(src, dst)
+        if not problems:
+            return dst
+        sys.stderr.write(f"md2zh: 警告: 块校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
+    sys.stderr.write(f"md2zh: 警告: 重译耗尽,该块保留原文: {';'.join(problems)}\n")
+    return src
+
+
+def _translate_long(text: str, glossary: list[str], api_base: str, model: str) -> str:
+    """超长文本:分段翻译,每段附前段上下文参考保证术语延续。"""
+    parts: list[str] = []
+    prev_context = ""
+    half = CONTEXT_TAIL // 2
+    for chunk in markdown.chunk_text(text, CHUNK_SIZE):
+        translated = _translate_chunk(chunk, glossary, api_base, model,
+                                      MAX_TOKENS_CHUNK, context=prev_context)
+        parts.append(translated)
+        # 前段上下文:上一段(原文+译文)尾部,供下一段术语保持一致
+        prev_context = f"原文: {chunk[-half:]}\n译文: {translated[-half:]}"
+    return "".join(parts)
+
+
+def _translate_frontmatter(fm: str, glossary: list[str], api_base: str, model: str) -> str:
+    """frontmatter 独立翻译:仅译 value;校验失败重译,仍失败保留原文。"""
+    problems: list[str] = []
+    for attempt in range(REPAIR_RETRIES + 1):
+        prompt = api.build_frontmatter_prompt(fm, glossary, fix_notes=";".join(problems))
+        dst = api.translate_text(api_base, model, prompt, MAX_TOKENS_SINGLE)
+        problems = checks.check_frontmatter(fm, dst)
+        if not problems:
+            return dst
+        sys.stderr.write(f"md2zh: 警告: frontmatter 校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
+    sys.stderr.write(f"md2zh: 警告: frontmatter 重译耗尽,保留原文: {';'.join(problems)}\n")
+    return fm
