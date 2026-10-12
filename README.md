@@ -3,8 +3,8 @@
 将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
-![Version](https://img.shields.io/badge/version-0.2.5-brightgreen)
-![Tests](https://img.shields.io/badge/tests-124%20passed-brightgreen)
+![Version](https://img.shields.io/badge/version-0.3.0-brightgreen)
+![Tests](https://img.shields.io/badge/tests-129%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -28,7 +28,7 @@
 
 - 🔒 **代码零泄露**:代码块与行内代码经占位符物理隔离,内容绝不发送给翻译 API
 - 📐 **格式保真**:frontmatter(仅译 value,key 与 `---` 标记由提示词约束保持)、链接 url、表格行列均与原文一致;CRLF/LF 行尾按源文件原样保持(stdin 模式输出 LF)
-- 🔁 **自动修复循环**:块级校验失败时携带具体错误说明自动重译(≤2 次),仍失败则该块回退保留原文(格式天然正确),全程无需人工干预
+- 🔁 **校验与可选修复**:块级校验失败时打印警告并采用译文(不回退原文);可选 `--repair N`(0-2,默认 0)自动重译,全程无需人工干预
 - 📄 **长文档可靠**:≤15000 字符整文一次调用(术语天然一致);超长文档按逻辑边界分段,每段附前段上下文保证术语延续,超限块自动放大输出预算
 - 📚 **术语表**:支持自定义术语对照,缺省自动加载用户配置目录默认术语表
 - 🔌 **管道过滤器**:`md2zh -` 从 stdin 读入、译文写 stdout,可直接嵌入 unix 管道;字节保真输出(绕开平台行尾翻译,统一 LF)
@@ -75,7 +75,7 @@ cat ABC.md | md2zh -
 
 - 代码块与行内代码不翻译(占位符保护,内容不会发送给 API);
 - 译文格式与原文一致:frontmatter 的 key 与 `---` 标记由提示词约束保持、链接 url 原样保留、表格行列不变;
-- 校验失败自动重译修复,重试耗尽后该块保留原文并输出警告(文件仍算成功生成);
+- 校验失败输出警告并采用译文,可用 --repair N 开启重译(文件仍算成功生成);
 - stdout 只输出数据:文件/批量模式输出成功译文路径(每行一个),stdin 模式输出译文正文;进度、跳过/忽略提示、警告、汇总全部走 stderr;
 - 错误消息格式:`md2zh: 上下文: 信息`;用户可见错误不打印 Python 堆栈;
 - 输出编码 UTF-8;源文件须为 UTF-8(含 BOM 亦可),否则返回退出码 65。
@@ -84,7 +84,7 @@ cat ABC.md | md2zh -
 
 | 退出码 | 含义 |
 |--------|------|
-| 0 | 成功(含全部跳过/忽略、含"回退保留原文"的文件) |
+| 0 | 成功(含全部跳过/忽略、含"校验失败采用译文"的文件) |
 | 1 | 批量模式存在失败文件(汇总后) |
 | 64 | 命令行用法错误(缺参数、FILE 与 --filelist 冲突等) |
 | 65 | 术语表格式错误或源文件非 UTF-8 |
@@ -133,7 +133,7 @@ POST https://index-translate.bilibili.com/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(124 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(129 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -155,7 +155,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ├── README.md / CHANGELOG.md / LICENSE / CLAUDE.md / pyproject.toml
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
 │                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
-├── tests/              # 124 项测试,API 全 mock
+├── tests/              # 129 项测试,API 全 mock
 ├── data/sample_en.md   # 手工验证样例
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)
@@ -164,8 +164,8 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ## 已知限制
 
 - 极罕见格式的畸形 API 响应(`delta` 字段为非对象)可能与参考实现同样触发错误(不影响正常使用);
-- frontmatter 识别与表格分块采用启发式:frontmatter 不校验、译文直接采用;表格等边界场景由校验+回退原文兜底,格式正确性优先;
-- 校验失败兜底意味着极端情况下个别块可能保留英文原文,stderr 会给出明确警告;
+- frontmatter 识别与表格分块采用启发式:frontmatter 不校验、译文直接采用;校验失败一律采用译文并警告(不回退原文),格式正确性优先;
+- 校验失败采用译文意味着极端情况下个别损坏块以译文写出,stderr 会给出明确警告;
 - stdin 模式:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出);输出统一 LF(与文件模式行尾保真不同)。
 - 忽略列表通配匹配:`**` 与段内 `*` 语义同 gitignore 子集;无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`),损害有界(多跳过可在 stderr 审计)。
 

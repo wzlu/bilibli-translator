@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-10-12
+
+### 新增
+
+- `--repair N` 修复重译开关:校验失败后的重译次数 0-2,默认 0(关闭)
+
+### 变更
+
+- 校验失败不再回退原文:一律采用最后一次译文并打印警告(取舍:损坏块如丢链接/占位符将以译文形态写出,警告为唯一提示;实证修复重译对链接类失败无收敛)
+
 ## [0.2.5] - 2026-10-12
 
 ### 变更
@@ -97,7 +107,8 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.3.0
 [0.2.5]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.5
 [0.2.4]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.4
 [0.2.3]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.3

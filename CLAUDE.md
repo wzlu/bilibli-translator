@@ -2,7 +2,7 @@
 
 ## Overview
 
-将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.2.5。
+将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.3.0。
 
 ## Architecture
 
@@ -20,7 +20,7 @@
 - **代码块物理隔离**:围栏/行内代码以 `@@@CODEBLOCK_n@@@` / `@@@INLINE_n@@@` 占位符替换后才发送 API,模型看不到代码内容
 - **链接 URL 物理隔离**:[显示文本](url) 的 url 以 `@@@URL_n@@@` 占位符替换后才发送 API,模型不可见,还原时拼回
 - **单次调用为主**:可译文本 ≤ 15000 字符整文一次流式调用(术语天然一致);超长按逻辑边界分段(≤3000 字符/段,附前段上下文参考保证术语延续;上下文发送前还原占位符,占位符令牌不进 API 请求),不可分割的超限块按块长缩放输出预算
-- **四重格式保障**:占位符隔离 + 提示词格式约束 + 块级校验 + 自动修复循环(校验失败带错误说明重译 ≤2 次,仍失败该块回退保留原文)
+- **四重格式保障**:占位符隔离 + 提示词格式约束 + 块级校验 + 可选自动修复循环(--repair 默认关闭;校验失败一律采用译文并警告,不回退原文)
 - **frontmatter 独立翻译**:仅译 value,key 与 `---` 标记由提示词约束保持,不校验、不重译、不回退
 - **术语表**:`--glossary` 指定 JSON 文件(`{"英文": "中文"}`);缺省自动加载 `~/.config/md2zh/glossary.json`(不存在视为无术语表);以【硬性要求】专名/术语对照附加到每段请求
 - **忽略列表**:`--filelist` 批量模式自动读取当前目录 `.translateignore`(不存在视为无规则);命中文件略过不翻译(忽略优先于扩展名/存在性检查与 `--force`),计入汇总「忽略」数
@@ -39,7 +39,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(124 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(129 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -62,6 +62,7 @@ POST {api_base}/chat/completions   # 默认 https://index-translate.bilibili.com
 md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
   --filelist LIST   文件列表(每行一个 md 文件,# 注释行忽略)
   --force           覆盖已存在的 *_zh.md(默认跳过)
+  --repair N        校验失败后的重译次数 0-2(默认 0;失败一律采用译文)
   --glossary FILE   术语表 JSON 文件(缺省加载用户配置目录默认文件)
   --api-base URL    默认 https://index-translate.bilibili.com/v1
   --model M         默认 Index-Translate-35B-A3B
@@ -70,7 +71,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 批量模式自动读取当前目录 `.translateignore`(命中文件略过,计入「忽略」统计);无新 CLI 选项。
 
-**退出码契约:** 0 成功(含全部跳过/忽略/回退原文) / 1 批量部分失败 / 64 用法错误 / 65 术语表格式错误或源文件非 UTF-8 / 66 输入不存在 / 74 写失败 / 75 API 临时不可用 / 130 SIGINT / 141 SIGPIPE(下游管道提前关闭)。
+**退出码契约:** 0 成功(含全部跳过/忽略/校验失败采用译文) / 1 批量部分失败 / 64 用法错误 / 65 术语表格式错误或源文件非 UTF-8 / 66 输入不存在 / 74 写失败 / 75 API 临时不可用 / 130 SIGINT / 141 SIGPIPE(下游管道提前关闭)。
 
 **流约定:** stdout 只输出数据(文件/批量模式输出译文路径,每行一个,可管道;stdin 模式输出译文正文);进度、跳过/忽略提示、警告、汇总全部走 stderr;错误消息 GNU 格式 `md2zh: 上下文: 信息`;用户可见错误不打 Python 堆栈。块级修复警告带文件路径前缀(stdin 模式为 `<stdin>`)。
 
@@ -87,6 +88,8 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 ```
 
 ## Recent Updates (Updated: 2026-10-12)
+
+v0.3.0 修复重译开关与不回退语义:0e8aa87..880c704 共 7 个提交(计划 + 任务 1-2 实施),本提交为文档同步;129/129 测试通过。--repair N 开关(默认 0);校验失败一律采用译文,不再回退原文。真实 API 复验结果:见发布说明。
 
 v0.2.5 frontmatter 校验移除:d83ee6f..4175751 共 2 个提交(计划 + 任务 1 实施),本提交为文档同步;124/124 测试通过。frontmatter 翻译后不再校验,译文直接采用。真实 API 复验:SKILL.md 0 警告,frontmatter 全译为中文(key 与 --- 标记完好,折叠标量续行不再误判);opensre_system_prompt.md 回归:加黑 0、链接 1 块(v0.2.3 已知错位残余,≤1 达标)。
 
@@ -110,7 +113,7 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 
 - **`references/call_api.py` 是参考实现,不得修改**
 - stdin 模式注意:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出,不调用 API);输出统一 LF(与文件模式行尾保真不同);`run_stdin` 的断管/读写错误分支无专属测试(行为经 main 处理器等价覆盖)
-- 已知限制(终审裁决随行发布):SSE `delta` 为非 dict 时的极端畸形分片未防护(与参考实现同款);表格行跨表按全局下标配对、紧凑表格 `|--|--|` 不识别等启发式边界——最坏后果为无谓重译或该块回退原文,损害有界
+- 已知限制(终审裁决随行发布):SSE `delta` 为非 dict 时的极端畸形分片未防护(与参考实现同款);表格行跨表按全局下标配对、紧凑表格 `|--|--|` 不识别等启发式边界——最坏后果为无谓重译或该块以损坏译文写出(警告提示),损害有界
 - 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
 - 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,tag v0.2.0 已推送);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
