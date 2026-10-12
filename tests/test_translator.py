@@ -150,7 +150,8 @@ def test_long_document_chunked(monkeypatch, tmp_path):
                                        api_base="http://x", model="m")
     assert result.status == "ok"
     assert calls["n"] > 1  # 发生了分段,多次调用
-    assert (tmp_path / "long_zh.md").read_text(encoding="utf-8") == "译文段" * calls["n"]
+    # 每块译文回挂源块尾随空白(末块无尾随空白),分段边界不得焊接
+    assert (tmp_path / "long_zh.md").read_text(encoding="utf-8") == ("译文段" + "\n\n") * (calls["n"] - 1) + "译文段"
 
 
 def test_translate_file_non_utf8(tmp_path):
@@ -161,3 +162,23 @@ def test_translate_file_non_utf8(tmp_path):
                                        api_base="http://x", model="m")
     assert result.status == "failed"
     assert result.exit_code == translator.EX_DATAERR
+
+
+def test_oversized_chunk_budget_scaled(monkeypatch, tmp_path):
+    # 不可分割的超限块(大表格)按块长放大输出预算,避免确定性截断
+    big_table = "| " + "a" * 5000 + " | b |\n"
+    src = tmp_path / "big.md"
+    src.write_text(big_table, encoding="utf-8")
+    monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
+    budgets = []
+
+    def fake(api_base, model, prompt, max_tokens):
+        budgets.append(max_tokens)
+        return big_table.rstrip()  # 原样返回(API 层 strip 后的形态)
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    result = translator.translate_file(str(src), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"
+    assert budgets[0] > translator.MAX_TOKENS_CHUNK  # 预算被放大
+    assert budgets[0] >= len(big_table) * 2  # 覆盖两倍块长的输出需求

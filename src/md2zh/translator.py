@@ -107,19 +107,40 @@ def _check_block(src: str, dst: str) -> list[str]:
     return problems
 
 
+def _trailing_whitespace(text: str) -> str:
+    """返回文本末尾的空白串(回挂译文以保持分段边界与文件末尾布局)。"""
+    return text[len(text.rstrip()):]
+
+
+def _repair(make_prompt, check, *, api_base: str, model: str,
+            max_tokens: int, label: str) -> tuple[bool, str]:
+    """通用修复循环:校验失败带错误说明重译,重译耗尽返回 (False, "")。
+
+    make_prompt(fix_notes) 构建带修复说明的提示词;check(dst) 返回问题列表,空列表表示通过。
+    """
+    problems: list[str] = []
+    for attempt in range(REPAIR_RETRIES + 1):
+        dst = api.translate_text(api_base, model, make_prompt(";".join(problems)), max_tokens)
+        problems = check(dst)
+        if not problems:
+            return True, dst
+        sys.stderr.write(f"md2zh: 警告: {label}校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
+    sys.stderr.write(f"md2zh: 警告: {label}重译耗尽,保留原文: {';'.join(problems)}\n")
+    return False, ""
+
+
 def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
                      max_tokens: int, context: str = "") -> str:
     """翻译一段文本:校验失败带错误说明重译,仍失败回退原文。"""
-    problems: list[str] = []
-    for attempt in range(REPAIR_RETRIES + 1):
-        prompt = api.build_prompt(src, glossary, fix_notes=";".join(problems), context=context)
-        dst = api.translate_text(api_base, model, prompt, max_tokens)
-        problems = _check_block(src, dst)
-        if not problems:
-            return dst
-        sys.stderr.write(f"md2zh: 警告: 块校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
-    sys.stderr.write(f"md2zh: 警告: 重译耗尽,该块保留原文: {';'.join(problems)}\n")
-    return src
+    ok, dst = _repair(
+        make_prompt=lambda fix: api.build_prompt(src, glossary, fix_notes=fix, context=context),
+        check=lambda d: _check_block(src, d),
+        api_base=api_base, model=model, max_tokens=max_tokens, label="块",
+    )
+    if not ok:
+        return src
+    # 译文经 API strip,回挂源块尾随空白,保持分段边界与文件末尾布局
+    return dst + _trailing_whitespace(src)
 
 
 def _translate_long(text: str, glossary: list[str], api_base: str, model: str) -> str:
@@ -128,8 +149,10 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str) -
     prev_context = ""
     half = CONTEXT_TAIL // 2
     for chunk in markdown.chunk_text(text, CHUNK_SIZE):
+        # 不可分割的超限块(如大表格)按块长放大输出预算,避免确定性截断
+        budget = max(MAX_TOKENS_CHUNK, len(chunk) * 2 + 200)
         translated = _translate_chunk(chunk, glossary, api_base, model,
-                                      MAX_TOKENS_CHUNK, context=prev_context)
+                                      budget, context=prev_context)
         parts.append(translated)
         # 前段上下文:上一段(原文+译文)尾部,供下一段术语保持一致
         prev_context = f"原文: {chunk[-half:]}\n译文: {translated[-half:]}"
@@ -138,13 +161,9 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str) -
 
 def _translate_frontmatter(fm: str, glossary: list[str], api_base: str, model: str) -> str:
     """frontmatter 独立翻译:仅译 value;校验失败重译,仍失败保留原文。"""
-    problems: list[str] = []
-    for attempt in range(REPAIR_RETRIES + 1):
-        prompt = api.build_frontmatter_prompt(fm, glossary, fix_notes=";".join(problems))
-        dst = api.translate_text(api_base, model, prompt, MAX_TOKENS_SINGLE)
-        problems = checks.check_frontmatter(fm, dst)
-        if not problems:
-            return dst
-        sys.stderr.write(f"md2zh: 警告: frontmatter 校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
-    sys.stderr.write(f"md2zh: 警告: frontmatter 重译耗尽,保留原文: {';'.join(problems)}\n")
-    return fm
+    ok, dst = _repair(
+        make_prompt=lambda fix: api.build_frontmatter_prompt(fm, glossary, fix_notes=fix),
+        check=lambda d: checks.check_frontmatter(fm, d),
+        api_base=api_base, model=model, max_tokens=MAX_TOKENS_SINGLE, label="frontmatter",
+    )
+    return dst if ok else fm
