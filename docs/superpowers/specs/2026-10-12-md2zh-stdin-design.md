@@ -23,7 +23,7 @@ unix-cli 审计(44 条规则)指出 io-support-stdin(HIGH)缺口:md2zh 仅接受
 2. 空输入(去空白后为空)直接返回 0,不调用 API。
 3. CRLF 归一为 LF(与 `translate_file` 内部管线一致)。
 4. 复用 `_translate_document`:frontmatter 独立翻译、代码块占位符保护、单次/分段策略、校验修复循环、失败回退原文——全部不变。
-5. 译文经 `print` 写 stdout(平台默认行尾;内部管线统一 LF)。
+5. 译文经 `sys.stdout.buffer` 字节写出(绕开平台行尾翻译),结尾无换行时补一个 `\n`——与文件模式输出字节一致(换行保真)。
 
 cli.py:`main` 中 `args.file == "-"` 时调用 `run_stdin`,不走文件路径。
 
