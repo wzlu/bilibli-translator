@@ -135,3 +135,10 @@ def test_links_inside_inline_code_not_protected():
     assert mapping.get("@@@INLINE_0@@@") == "`[x](https://in.code)`"
     assert "@@@URL_0@@@" in protected
     assert markdown.restore_code_blocks(protected, mapping) == src
+
+
+def test_link_url_with_inline_code_roundtrips():
+    # 链接目标内含行内代码:URL 保护必须跳过(目标已含占位符),往返无损
+    src = "[x](`code`)"
+    protected, mapping = markdown.protect_code_blocks(src)
+    assert markdown.restore_code_blocks(protected, mapping) == src

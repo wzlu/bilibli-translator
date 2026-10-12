@@ -99,6 +99,8 @@ def _protect_links(text: str) -> tuple[str, dict[str, str]]:
 
     def repl(m: re.Match) -> str:
         nonlocal n
+        if "@@@" in m.group(2):
+            return m.group(0)  # 目标已含占位符(如行内代码):跳过保护,保证还原往返
         ph = f"@@@URL_{n}@@@"
         mapping[ph] = m.group(2)
         n += 1
