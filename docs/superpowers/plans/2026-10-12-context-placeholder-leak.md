@@ -52,11 +52,11 @@ def test_long_context_restores_placeholders(monkeypatch):
     chunk1 = "正文段落。" * 570 + " 结尾代码 `code_tail`。"
     chunk2 = "后续正文。" * 200 + " 代码 `code_2`。"
     text = chunk1 + "\n\n" + chunk2
-    _, mapping = translator.markdown.protect_code_blocks(text)
+    protected, mapping = translator.markdown.protect_code_blocks(text)
 
-    result = translator._translate_long(text, [], "http://x", "m", mapping=mapping)
+    result = translator._translate_long(protected, [], "http://x", "m", mapping=mapping)
 
-    assert result == text
+    assert translator.markdown.restore_code_blocks(result, mapping) == text
     assert len(prompts) == 2
     # 第二块请求携带上下文:截取【上下文参考】与【源文】之间的段落
     ctx = prompts[1].split("【上下文参考】(仅供术语一致参考,不要翻译本段)\n", 1)[1].split("\n【源文】", 1)[0]

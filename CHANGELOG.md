@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.2] - 2026-10-12
+
+### 修复
+
+- 长文分段上下文发送前还原占位符:占位符令牌不再进入 API 请求,消除「出现未知占位符」警告与整块回退英文原文的根因;携带上下文的提示词追加硬约束,输出不得包含上下文参考内容
+
 ## [0.2.1] - 2026-10-12
 
 ### 修复
@@ -65,7 +71,8 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.2
 [0.2.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.1
 [0.2.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.0
 [0.1.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.1.0
