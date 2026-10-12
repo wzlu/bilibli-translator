@@ -121,29 +121,32 @@ def _trailing_whitespace(text: str) -> str:
 
 
 def _repair(make_prompt, check, *, api_base: str, model: str,
-            max_tokens: int, label: str) -> tuple[bool, str]:
+            max_tokens: int, label: str, source: str = "") -> tuple[bool, str]:
     """通用修复循环:校验失败带错误说明重译,重译耗尽返回 (False, "")。
 
     make_prompt(fix_notes) 构建带修复说明的提示词;check(dst) 返回问题列表,空列表表示通过。
+    source 为来源文件路径(stdin 模式为 "<stdin>"),非空时警告带 "{source}: " 前缀。
     """
+    prefix = f"{source}: " if source else ""
     problems: list[str] = []
     for attempt in range(REPAIR_RETRIES + 1):
         dst = api.translate_text(api_base, model, make_prompt(";".join(problems)), max_tokens)
         problems = check(dst)
         if not problems:
             return True, dst
-        sys.stderr.write(f"md2zh: 警告: {label}校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
-    sys.stderr.write(f"md2zh: 警告: {label}重译耗尽,保留原文: {';'.join(problems)}\n")
+        sys.stderr.write(f"md2zh: 警告: {prefix}{label}校验失败,重译({attempt + 1}/{REPAIR_RETRIES}): {';'.join(problems)}\n")
+    sys.stderr.write(f"md2zh: 警告: {prefix}{label}重译耗尽,保留原文: {';'.join(problems)}\n")
     return False, ""
 
 
 def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
-                     max_tokens: int, context: str = "") -> str:
+                     max_tokens: int, context: str = "", *, source: str = "") -> str:
     """翻译一段文本:校验失败带错误说明重译,仍失败回退原文。"""
     ok, dst = _repair(
         make_prompt=lambda fix: api.build_prompt(src, glossary, fix_notes=fix, context=context),
         check=lambda d: _check_block(src, d),
         api_base=api_base, model=model, max_tokens=max_tokens, label="块",
+        source=source,
     )
     if not ok:
         return src
@@ -151,7 +154,8 @@ def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
     return dst + _trailing_whitespace(src)
 
 
-def _translate_long(text: str, glossary: list[str], api_base: str, model: str) -> str:
+def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
+                    *, source: str = "") -> str:
     """超长文本:分段翻译,每段附前段上下文参考保证术语延续。"""
     parts: list[str] = []
     prev_context = ""
@@ -160,7 +164,7 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str) -
         # 不可分割的超限块(如大表格)按块长放大输出预算,避免确定性截断
         budget = max(MAX_TOKENS_CHUNK, len(chunk) * 2 + 200)
         translated = _translate_chunk(chunk, glossary, api_base, model,
-                                      budget, context=prev_context)
+                                      budget, context=prev_context, source=source)
         parts.append(translated)
         # 前段上下文:上一段(原文+译文)尾部,供下一段术语保持一致
         prev_context = f"原文: {chunk[-half:]}\n译文: {translated[-half:]}"

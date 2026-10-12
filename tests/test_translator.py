@@ -130,6 +130,37 @@ def test_chunk_repair_exhausted_falls_back(monkeypatch):
     assert result == "[a](https://x)"
 
 
+def test_chunk_repair_warning_names_source(monkeypatch, capsys):
+    # 修复警告必须携带文件路径,批量模式下才能定位问题文件
+    outputs = iter(["坏译文", "还是坏", "依然坏"])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    result = translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096, source="docs/a.md")
+    assert result == "[a](https://x)"
+    err = capsys.readouterr().err
+    assert "md2zh: 警告: docs/a.md: 块校验失败,重译(1/2)" in err
+    assert "md2zh: 警告: docs/a.md: 块重译耗尽,保留原文" in err
+
+
+def test_chunk_repair_warning_without_source_keeps_format(monkeypatch, capsys):
+    # 内部直接调用不带 source 时警告格式与现状一致,不出现空前缀
+    outputs = iter(["坏译文", "还是坏", "依然坏"])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    translator._translate_chunk("[a](https://x)", [], "http://x", "m", 4096)
+    err = capsys.readouterr().err
+    assert "md2zh: 警告: 块重译耗尽,保留原文" in err
+    assert "警告: :" not in err
+
+
+def test_long_warning_names_source(monkeypatch, capsys):
+    # 超长文本分段路径的块级警告同样携带 source
+    outputs = iter(["坏译文", "还是坏", "依然坏"])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    text = "[a](https://x) " + "正文" * 2000  # 单段超 3000 字符,按不可分割块整段处理
+    result = translator._translate_long(text, [], "http://x", "m", source="docs/a.md")
+    assert result == text
+    assert "md2zh: 警告: docs/a.md: 块重译耗尽,保留原文" in capsys.readouterr().err
+
+
 def test_frontmatter_translated(monkeypatch, tmp_path):
     src = tmp_path / "A.md"
     src.write_text("---\ntitle: Hello\n---\n\n正文", encoding="utf-8")
