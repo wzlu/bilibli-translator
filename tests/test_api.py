@@ -93,8 +93,9 @@ def _sse(delta: str) -> str:
 def test_translate_text_stream(monkeypatch):
     calls = {}
 
-    def fake_post(url, json, timeout, stream):
+    def fake_post(url, json, timeout, stream, headers=None):
         calls["payload"] = json
+        calls["headers"] = headers
         return _FakeResponse([_sse("你"), _sse("好"), "data: [DONE]"])
 
     monkeypatch.setattr(api.requests, "post", fake_post)
@@ -102,12 +103,14 @@ def test_translate_text_stream(monkeypatch):
     assert result == "你好"
     assert calls["payload"]["stream"] is True
     assert calls["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
+    # 网关对默认 UA 返回 412,必须显式携带 User-Agent
+    assert calls["headers"]["User-Agent"] == "Index-Translate-Client/1.0"
 
 
 def test_translate_text_retries_then_raises(monkeypatch):
     count = {"n": 0}
 
-    def fake_post(url, json, timeout, stream):
+    def fake_post(url, json, timeout, stream, headers=None):
         count["n"] += 1
         raise requests.ConnectionError("网络错误")
 
@@ -120,7 +123,7 @@ def test_translate_text_retries_then_raises(monkeypatch):
 def test_translate_text_recovers_on_second_try(monkeypatch):
     count = {"n": 0}
 
-    def fake_post(url, json, timeout, stream):
+    def fake_post(url, json, timeout, stream, headers=None):
         count["n"] += 1
         if count["n"] == 1:
             raise requests.ConnectionError("网络错误")
@@ -131,7 +134,7 @@ def test_translate_text_recovers_on_second_try(monkeypatch):
 
 
 def test_translate_text_strips_think(monkeypatch):
-    def fake_post(url, json, timeout, stream):
+    def fake_post(url, json, timeout, stream, headers=None):
         return _FakeResponse([_sse("<think>思考</think>译文"), "data: [DONE]"])
 
     monkeypatch.setattr(api.requests, "post", fake_post)
@@ -139,7 +142,7 @@ def test_translate_text_strips_think(monkeypatch):
 
 
 def test_translate_text_empty_result_raises(monkeypatch):
-    def fake_post(url, json, timeout, stream):
+    def fake_post(url, json, timeout, stream, headers=None):
         return _FakeResponse(["data: [DONE]"])
 
     monkeypatch.setattr(api.requests, "post", fake_post)

@@ -119,10 +119,13 @@ def translate_text(api_base: str, model: str, prompt: str, max_tokens: int) -> s
         "stream": True,
         "chat_template_kwargs": {"enable_thinking": False},
     }
+    # 网关要求非默认 User-Agent,否则返回 412(见 references/call_api.py)
+    headers = {"User-Agent": "Index-Translate-Client/1.0"}
     last_error: Exception | None = None
     for _ in range(RETRY_TIMES + 1):
         try:
-            with requests.post(url, json=payload, timeout=REQUEST_TIMEOUT, stream=True) as resp:
+            with requests.post(url, json=payload, headers=headers,
+                               timeout=REQUEST_TIMEOUT, stream=True) as resp:
                 resp.raise_for_status()
                 parts = []
                 for raw in resp.iter_lines():
