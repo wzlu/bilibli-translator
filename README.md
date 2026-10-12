@@ -5,6 +5,7 @@
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
 ![Version](https://img.shields.io/badge/version-0.1.0-brightgreen)
 ![Tests](https://img.shields.io/badge/tests-76%20passed-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
 
@@ -18,6 +19,7 @@
 - [开发](#开发)
 - [项目结构](#项目结构)
 - [已知限制](#已知限制)
+- [许可证](#许可证)
 
 ## 特性
 
@@ -33,6 +35,8 @@
 要求 Python ≥ 3.10,运行期依赖仅 `requests`。
 
 ```bash
+git clone https://github.com/wzlu/bilibli-translator.git
+cd bilibli-translator
 python -m pip install -e ".[dev]"
 ```
 
@@ -138,6 +142,12 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 
 ## 参考
 
+- 代码仓库:https://github.com/wzlu/bilibli-translator
+- 变更日志:`CHANGELOG.md`
 - 设计规格:`docs/superpowers/specs/2026-10-12-md2zh-translator-design.md`
 - 实施计划:`docs/superpowers/plans/2026-10-12-md2zh-translator.md`
 - API 参考实现:`references/call_api.py`
+
+## 许可证
+
+本项目采用 [MIT](LICENSE) 许可证。

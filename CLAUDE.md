@@ -84,9 +84,11 @@ md2zh FILE | md2zh --filelist LIST [选项]
 
 v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审 "Ready to merge: Yes",76/76 测试通过,真实 API 手工验证 5/5。执行期经审查修复的计划缺陷:嵌套反引号围栏截断、分段分隔符颠倒、源文奇数加黑校验死锁、提示词装配重复、分段边界焊接/超限块预算/修复循环重复、User-Agent 412、SSE 非 dict 分片防护、换行保真、BOM 文件列表。
 
+同日发布至 GitHub:添加远程 origin(https://github.com/wzlu/bilibli-translator),main 建立上游跟踪并推送全部 21 个提交;发布版 README 改写、CLAUDE.md、docs/ 与 references/ 由未跟踪转为入库(提交 0c3b03a)。
+
 ## Important Notes
 
 - **`references/call_api.py` 是参考实现,不得修改**
 - 已知限制(终审裁决随行发布):SSE `delta` 为非 dict 时的极端畸形分片未防护(与参考实现同款);表格行跨表按全局下标配对、frontmatter 冒号启发式、紧凑表格 `|--|--|` 不识别等启发式边界——最坏后果为无谓重译或该块回退原文,损害有界
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
-- 仓库无远程;`temp/`、`reports/`、`.superpowers/`、`.serena/`、`docs/`、`references/` 均未跟踪(gitignore 或有意不入库)
+- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库

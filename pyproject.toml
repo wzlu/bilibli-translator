@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "将英文 Markdown 文件翻译为中文的命令行工具"
 requires-python = ">=3.10"
 dependencies = ["requests>=2.31"]
+license = {text = "MIT"}
+
+[project.urls]
+Repository = "https://github.com/wzlu/bilibli-translator"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
