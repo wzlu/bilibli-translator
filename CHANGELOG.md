@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.3] - 2026-10-12
+
+### 修复
+
+- 链接 URL 以 `@@@URL_n@@@` 占位符物理隔离:URL 不再进入 API 请求,模型无从改写,消除「链接 url 与原文不一致」失败;还原时拼回原 url
+
+### 变更
+
+- 提示词格式约束由 5 条并为 3 条,不再逐项点名加黑与链接标记(稀疏化,降低模型对标记的过度改写)
+
 ## [0.2.2] - 2026-10-12
 
 ### 修复
@@ -71,7 +81,8 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.3
 [0.2.2]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.2
 [0.2.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.1
 [0.2.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.0

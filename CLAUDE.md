@@ -2,7 +2,7 @@
 
 ## Overview
 
-将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.2.2。
+将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.2.3。
 
 ## Architecture
 
@@ -18,6 +18,7 @@
 **核心设计决策:**
 
 - **代码块物理隔离**:围栏/行内代码以 `@@@CODEBLOCK_n@@@` / `@@@INLINE_n@@@` 占位符替换后才发送 API,模型看不到代码内容
+- **链接 URL 物理隔离**:[显示文本](url) 的 url 以 @@@URL_n@@@ 占位符替换后才发送 API,模型不可见,还原时拼回
 - **单次调用为主**:可译文本 ≤ 15000 字符整文一次流式调用(术语天然一致);超长按逻辑边界分段(≤3000 字符/段,附前段上下文参考保证术语延续;上下文发送前还原占位符,占位符令牌不进 API 请求),不可分割的超限块按块长缩放输出预算
 - **四重格式保障**:占位符隔离 + 提示词格式约束 + 块级校验 + 自动修复循环(校验失败带错误说明重译 ≤2 次,仍失败该块回退保留原文)
 - **frontmatter 独立翻译**:仅译 value,key 与 `---` 标记严格保留,校验失败回退原文
@@ -38,7 +39,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(123 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(128 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -86,6 +87,8 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 ```
 
 ## Recent Updates (Updated: 2026-10-12)
+
+v0.2.3 链接 URL 占位符化与提示词稀疏化:9896253..20f5945 共 3 个提交(规格/计划 + 任务 1-2 实施),本提交为文档同步;128/128 测试通过。链接 URL 以 @@@URL_n@@@ 物理隔离(模型不可见),提示词格式约束并条去枚举;真实 API 验证结果:见发布说明。
 
 v0.2.2 上下文占位符泄漏修复:2dff2fa..913c0b8 共 3 个提交(规格/计划 + 任务 1-2 实施),本提交为文档同步;123/123 测试通过。长文分段上下文发送前还原占位符(占位符令牌不进 API 请求),提示词追加上下文隔离硬约束,消除「出现未知占位符」整块回退根因。
 
