@@ -59,3 +59,89 @@ def test_build_frontmatter_prompt_glossary_and_fix():
     prompt = api.build_frontmatter_prompt("---\ntitle: Hi\n---", ["A→甲"], "缺 --- 标记")
     assert "【硬性要求】专名/术语对照: A→甲" in prompt
     assert "上次翻译存在以下问题,请修正: 缺 --- 标记" in prompt
+
+
+import json
+
+import requests
+
+
+class _FakeResponse:
+    """模拟 requests 流式响应。"""
+
+    def __init__(self, lines):
+        self._lines = lines
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def raise_for_status(self):
+        pass
+
+    def iter_lines(self):
+        for ln in self._lines:
+            yield ln.encode("utf-8")
+
+
+def _sse(delta: str) -> str:
+    return "data: " + json.dumps({"choices": [{"delta": {"content": delta}}]})
+
+
+def test_translate_text_stream(monkeypatch):
+    calls = {}
+
+    def fake_post(url, json, timeout, stream):
+        calls["payload"] = json
+        return _FakeResponse([_sse("你"), _sse("好"), "data: [DONE]"])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    result = api.translate_text("http://x/v1", "m", "提示词", 1024)
+    assert result == "你好"
+    assert calls["payload"]["stream"] is True
+    assert calls["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_translate_text_retries_then_raises(monkeypatch):
+    count = {"n": 0}
+
+    def fake_post(url, json, timeout, stream):
+        count["n"] += 1
+        raise requests.ConnectionError("网络错误")
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    with pytest.raises(api.TranslateError):
+        api.translate_text("http://x/v1", "m", "p", 1024)
+    assert count["n"] == api.RETRY_TIMES + 1
+
+
+def test_translate_text_recovers_on_second_try(monkeypatch):
+    count = {"n": 0}
+
+    def fake_post(url, json, timeout, stream):
+        count["n"] += 1
+        if count["n"] == 1:
+            raise requests.ConnectionError("网络错误")
+        return _FakeResponse([_sse("好"), "data: [DONE]"])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    assert api.translate_text("http://x/v1", "m", "p", 1024) == "好"
+
+
+def test_translate_text_strips_think(monkeypatch):
+    def fake_post(url, json, timeout, stream):
+        return _FakeResponse([_sse("<think>思考</think>译文"), "data: [DONE]"])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    assert api.translate_text("http://x/v1", "m", "p", 1024) == "译文"
+
+
+def test_translate_text_empty_result_raises(monkeypatch):
+    def fake_post(url, json, timeout, stream):
+        return _FakeResponse(["data: [DONE]"])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    with pytest.raises(api.TranslateError):
+        api.translate_text("http://x/v1", "m", "p", 1024)

@@ -103,3 +103,54 @@ def build_frontmatter_prompt(text: str, glossary: list[str], fix_notes: str = ""
         f"【约束要求】\n{req_lines}\n\n"
         f"{_OUTPUT_ONLY}"
     )
+
+
+def translate_text(api_base: str, model: str, prompt: str, max_tokens: int) -> str:
+    """流式调用 chat/completions,失败自动重试,重试耗尽抛 TranslateError。
+
+    采用流式请求规避非流式长文本的网关 504 超时(见 references/call_api.py)。
+    """
+    url = f"{api_base.rstrip('/')}/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.0,
+        "max_tokens": max_tokens,
+        "stream": True,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    last_error: Exception | None = None
+    for _ in range(RETRY_TIMES + 1):
+        try:
+            with requests.post(url, json=payload, timeout=REQUEST_TIMEOUT, stream=True) as resp:
+                resp.raise_for_status()
+                parts = []
+                for raw in resp.iter_lines():
+                    if not raw:
+                        continue
+                    line = raw.decode("utf-8", errors="replace").strip()
+                    if not line.startswith("data: "):
+                        continue
+                    body = line[6:]
+                    if body == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(body)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    content = delta.get("content")
+                    if content:
+                        parts.append(content)
+                text = "".join(parts)
+                if "</think>" in text:
+                    text = text.split("</think>", 1)[1]
+                if not text.strip():
+                    raise TranslateError("API 返回空结果")
+                return text.strip()
+        except (requests.RequestException, TranslateError) as e:
+            last_error = e
+    raise TranslateError(str(last_error))
