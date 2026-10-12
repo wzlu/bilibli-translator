@@ -35,3 +35,32 @@ def test_no_kv_not_frontmatter():
     fm, rest = markdown.split_frontmatter(text)
     assert fm is None
     assert rest == text
+
+
+def test_fenced_block_protected():
+    src = "前文\n```python\nprint(1)\n```\n后文"
+    protected, mapping = markdown.protect_code_blocks(src)
+    assert "```" not in protected
+    assert "print(1)" not in protected
+    assert markdown.restore_code_blocks(protected, mapping) == src
+
+
+def test_inline_code_protected():
+    src = "使用 `os.replace` 完成替换"
+    protected, mapping = markdown.protect_code_blocks(src)
+    assert "`" not in protected
+    assert "os.replace" not in protected
+    assert markdown.restore_code_blocks(protected, mapping) == src
+
+
+def test_unclosed_fence_left_as_text():
+    src = "```\n未闭合"
+    protected, mapping = markdown.protect_code_blocks(src)
+    assert protected == src
+    assert mapping == {}
+
+
+def test_multiple_blocks_roundtrip():
+    src = "# 标题\n\n```bash\nls\n```\n\n正文 `code` 结束\n"
+    protected, mapping = markdown.protect_code_blocks(src)
+    assert markdown.restore_code_blocks(protected, mapping) == src
