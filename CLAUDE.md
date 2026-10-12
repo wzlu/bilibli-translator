@@ -2,7 +2,7 @@
 
 ## Overview
 
-将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.2.0。
+将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.2.1。
 
 ## Architecture
 
@@ -38,7 +38,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(114 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(120 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -71,7 +71,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 **退出码契约:** 0 成功(含全部跳过/忽略/回退原文) / 1 批量部分失败 / 64 用法错误 / 65 术语表格式错误或源文件非 UTF-8 / 66 输入不存在 / 74 写失败 / 75 API 临时不可用 / 130 SIGINT / 141 SIGPIPE(下游管道提前关闭)。
 
-**流约定:** stdout 只输出数据(文件/批量模式输出译文路径,每行一个,可管道;stdin 模式输出译文正文);进度、跳过/忽略提示、警告、汇总全部走 stderr;错误消息 GNU 格式 `md2zh: 上下文: 信息`;用户可见错误不打 Python 堆栈。
+**流约定:** stdout 只输出数据(文件/批量模式输出译文路径,每行一个,可管道;stdin 模式输出译文正文);进度、跳过/忽略提示、警告、汇总全部走 stderr;错误消息 GNU 格式 `md2zh: 上下文: 信息`;用户可见错误不打 Python 堆栈。块级修复警告带文件路径前缀(stdin 模式为 `<stdin>`)。
 
 ## File Structure
 
@@ -86,6 +86,8 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 ```
 
 ## Recent Updates (Updated: 2026-10-12)
+
+v0.2.1 警告补文件上下文:295781c..0da56ca 共 4 个提交(规格/计划 + SDD 2 任务 × 实施/审查),120/120 测试通过。块级修复的两条警告(校验失败重译、重译耗尽保留原文)补 `{路径}: ` 前缀,批量模式下可定位问题文件;stdin 模式显示 `<stdin>`;`source` 为空(内部直接调用)时保持原格式。
 
 v0.2.0 忽略列表功能:29091d2..0c42ffa 共 18 个提交(SDD 6 任务 × 实施/审查 + 4 次审查修复波),114/114 测试通过,opus 全分支终审 "Ready to merge: Yes",已推送 origin/main 并打 tag v0.2.0。`--filelist` 批量模式自动读取当前目录 `.translateignore`(精确路径 + `**`/段内通配,`UTF-8-sig→GBK` 回退,非法规则警告降级),命中文件略过并计入「忽略」汇总。
 

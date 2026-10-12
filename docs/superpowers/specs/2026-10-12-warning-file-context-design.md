@@ -71,7 +71,7 @@ md2zh: 警告: 块重译耗尽,保留原文: 出现未知占位符: ['@@@INLINE_
 |---|---|
 | `_translate_chunk` 重译耗尽警告含 source | `md2zh: 警告: docs/a.md: 块重译耗尽` 出现在 stderr |
 | `translate_file` 端到端警告含实际路径 | stderr 含 tmp_path 源文件路径 |
-| frontmatter 修复耗尽警告含 source | stderr 含 `{path}: frontmatter 重译耗尽` |
+| frontmatter 修复耗尽警告含 source | stderr 含 `{path}: frontmatter重译耗尽` |
 | `run_stdin` 警告含 `<stdin>` | stderr 含 `<stdin>: 块` |
 | 无 source 直接调用警告格式不变(兼容) | stderr 不含空前缀 `警告: :` |
 

@@ -187,7 +187,7 @@ def test_document_frontmatter_warning_names_source(monkeypatch, capsys):
     result = translator._translate_document(text, [], "http://x", "m", source="docs/a.md")
     assert "title: Hello" in result  # frontmatter 回退原文,结构保留
     err = capsys.readouterr().err
-    assert "md2zh: 警告: docs/a.md: frontmatter 重译耗尽,保留原文" in err
+    assert "md2zh: 警告: docs/a.md: frontmatter重译耗尽,保留原文" in err
 
 
 def test_translate_file_warning_names_path(monkeypatch, tmp_path, capsys):

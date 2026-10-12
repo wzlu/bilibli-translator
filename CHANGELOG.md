@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.1] - 2026-10-12
+
+### 修复
+
+- 块级修复警告补文件路径前缀(如 `md2zh: 警告: docs/a.md: 块重译耗尽,保留原文: ...`),批量模式下可定位问题文件;stdin 模式显示 `<stdin>`
+
 ## [0.2.0] - 2026-10-12
 
 ### 新增
@@ -59,6 +65,7 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.1
 [0.2.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.0
 [0.1.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.1.0
