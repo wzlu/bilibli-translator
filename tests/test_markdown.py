@@ -106,7 +106,8 @@ def test_chunk_merged_list_join_consistent():
 
 def test_chunk_merged_tables_join_consistent():
     # 空行分隔的两个表格进入合并分支:拼接必须与原文一致
-    table1 = "| a | b |\n| 1 | 2 |\n"
+    # 表格后须有后续内容(尾段),否则合并步 sep 为空,顺序颠倒不可见
+    table1 = "| a | b |\n| 1 | 2 |"
     table2 = "| c | d |\n| 3 | 4 |\n"
-    text = table1 + "\n\n" + table2
+    text = table1 + "\n\n" + table2 + "\n\n后语"
     assert "".join(markdown.chunk_text(text)) == text
