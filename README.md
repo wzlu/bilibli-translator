@@ -56,6 +56,9 @@ md2zh ABC.md --force
 
 # 指定术语表文件
 md2zh ABC.md --glossary g.json
+
+# 管道过滤器:stdin 读入,译文写 stdout
+cat ABC.md | md2zh -
 ```
 
 单文件失败时返回具体退出码;批量模式下单个文件失败不中断,结束时在 stderr 汇总 `成功 N,跳过 M,失败 K`,存在失败则退出码为 1。

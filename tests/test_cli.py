@@ -90,6 +90,7 @@ def test_help_contains_examples(capsys):
     assert e.value.code == 0
     out = capsys.readouterr().out
     assert "示例:\n  md2zh ABC.md" in out  # 示例逐行展示,不被折叠成一段
+    assert "cat ABC.md | md2zh -" in out
 
 def test_stdin_mode(monkeypatch, capsys):
     # md2zh - 从 stdin 读入,译文写 stdout,stderr 无输出

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 新增
+
+- `md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器
+
 ### 修复
 
 - 下游管道提前关闭(如 `md2zh x | head`)按 128+SIGPIPE 静默退出,不再打印堆栈

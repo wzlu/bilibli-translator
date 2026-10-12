@@ -55,7 +55,7 @@ POST {api_base}/chat/completions   # 默认 https://index-translate.bilibili.com
 **CLI 接口:**
 
 ```
-md2zh FILE | md2zh --filelist LIST [选项]
+md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
   --filelist LIST   文件列表(每行一个 md 文件,# 注释行忽略)
   --force           覆盖已存在的 *_zh.md(默认跳过)
   --glossary FILE   术语表 JSON 文件(缺省加载用户配置目录默认文件)

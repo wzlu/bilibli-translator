@@ -41,7 +41,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "  md2zh ABC.md                      翻译单个文件,生成 ABC_zh.md\n"
         "  md2zh --filelist list.txt         批量翻译(每行一个 md 文件)\n"
         "  md2zh ABC.md --force              覆盖已存在的译文\n"
-        "  md2zh ABC.md --glossary g.json    指定术语表"
+        "  md2zh ABC.md --glossary g.json    指定术语表\n"
+        "  cat ABC.md | md2zh -              管道过滤器(stdin → stdout)"
     )
     args = parser.parse_args(argv)
     if args.file and args.filelist:
