@@ -26,22 +26,6 @@ def test_check_tables_col_mismatch():
     assert problems
 
 
-def test_check_frontmatter_ok():
-    src = "---\ntitle: Hello\n---"
-    dst = "---\ntitle: 你好\n---"
-    assert checks.check_frontmatter(src, dst) == []
-
-
-def test_check_frontmatter_key_changed():
-    problems = checks.check_frontmatter("---\ntitle: Hello\n---", "---\n标题: 你好\n---")
-    assert problems
-
-
-def test_check_frontmatter_missing_markers():
-    problems = checks.check_frontmatter("---\ntitle: Hello\n---", "title: 你好")
-    assert problems
-
-
 def test_check_placeholders_ok():
     src = "看 @@@CODEBLOCK_0@@@ 这里"
     assert checks.check_placeholders(src, src) == []

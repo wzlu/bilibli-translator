@@ -95,7 +95,7 @@ def _translate_document(text: str, glossary: list[str], api_base: str, model: st
     if fm is None:
         head = ""
     else:
-        head = _translate_frontmatter(fm, glossary, api_base, model, source=source)
+        head = _translate_frontmatter(fm, glossary, api_base, model)
 
     if len(protected) <= SINGLE_CALL_LIMIT:
         body = _translate_chunk(protected, glossary, api_base, model, MAX_TOKENS_SINGLE, source=source)
@@ -180,16 +180,13 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
     return "".join(parts)
 
 
-def _translate_frontmatter(fm: str, glossary: list[str], api_base: str, model: str,
-                           *, source: str = "") -> str:
-    """frontmatter 独立翻译:仅译 value;校验失败重译,仍失败保留原文。"""
-    ok, dst = _repair(
-        make_prompt=lambda fix: api.build_frontmatter_prompt(fm, glossary, fix_notes=fix),
-        check=lambda d: checks.check_frontmatter(fm, d),
-        api_base=api_base, model=model, max_tokens=MAX_TOKENS_SINGLE, label="frontmatter",
-        source=source,
-    )
-    return dst if ok else fm
+def _translate_frontmatter(fm: str, glossary: list[str], api_base: str, model: str) -> str:
+    """frontmatter 独立翻译:仅译 value,不校验、不重译、不回退。
+
+    key 与 --- 标记由提示词约束保持;模型偏差直接采用(信任模型取舍,同 v0.2.4 加黑)。
+    """
+    return api.translate_text(api_base, model,
+                              api.build_frontmatter_prompt(fm, glossary), MAX_TOKENS_SINGLE)
 
 
 def parse_filelist(path: str) -> list[str]:

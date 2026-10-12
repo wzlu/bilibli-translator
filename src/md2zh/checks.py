@@ -34,19 +34,6 @@ def check_tables(src: str, dst: str) -> list[str]:
     return problems
 
 
-def check_frontmatter(src: str, dst: str) -> list[str]:
-    """frontmatter 的 --- 标记与 key 集合必须一致。"""
-    problems = []
-    if not (src.startswith("---") and src.rstrip().endswith("---")):
-        return problems  # 原文异常时由调用方保证,不校验
-    if not (dst.startswith("---") and dst.rstrip().endswith("---")):
-        problems.append("译文 frontmatter 缺少 --- 标记")
-        return problems
-    if _keys(src) != _keys(dst):
-        problems.append(f"frontmatter key 集合不一致(原文 {_keys(src)},译文 {_keys(dst)})")
-    return problems
-
-
 def check_placeholders(src: str, dst: str) -> list[str]:
     """所有占位符必须原样出现在译文中。"""
     src_ph = sorted(_PLACEHOLDER_RE.findall(src))
@@ -59,14 +46,3 @@ def check_placeholders(src: str, dst: str) -> list[str]:
     if extra:
         problems.append(f"出现未知占位符: {extra}")
     return problems
-
-
-def _keys(frontmatter: str) -> list[str]:
-    keys = []
-    for line in frontmatter.splitlines():
-        line = line.strip()
-        if line in ("---", ""):
-            continue
-        if ":" in line:
-            keys.append(line.split(":", 1)[0].strip())
-    return keys

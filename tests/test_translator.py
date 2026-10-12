@@ -178,16 +178,25 @@ def test_frontmatter_translated(monkeypatch, tmp_path):
     assert "译文正文" in content
 
 
-def test_frontmatter_fallback_to_original(monkeypatch, tmp_path):
+def test_frontmatter_key_changed_accepted(monkeypatch, tmp_path):
+    # frontmatter 不再校验:模型改了 key 也直接采用,不回退原文、不重译
     src = tmp_path / "A.md"
     src.write_text("---\ntitle: Hello\n---\n\n正文", encoding="utf-8")
-    # frontmatter 3 次尝试都改了 key,正文正常
-    outputs = iter(["---\n标题: 错\n---", "---\n标题: 错\n---", "---\n标题: 错\n---", "译文"])
-    monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
+    calls = {"n": 0}
+    # 3 份同款改 key 译文 + 正文:旧实现 3 次校验失败后回退原文(共 4 次调用)
+    outputs = iter(["---\n标题: 错\n---"] * 3 + ["译文"])
+
+    def fake(*a, **k):
+        calls["n"] += 1
+        return next(outputs)
+
+    monkeypatch.setattr(api, "translate_text", fake)
     translator.translate_file(str(src), force=False, glossary=[],
                               api_base="http://x", model="m")
     content = (tmp_path / "A_zh.md").read_text(encoding="utf-8")
-    assert "title: Hello" in content  # 原文 frontmatter 保留
+    assert "标题: 错" in content        # 译文 frontmatter 直接采用
+    assert "title: Hello" not in content  # 不回退原文
+    assert calls["n"] == 2               # frontmatter + 正文各一次,无重译
 
 
 def test_long_document_chunked(monkeypatch, tmp_path):
@@ -426,15 +435,16 @@ def test_run_batch_ignore_wins_over_force(monkeypatch, tmp_path):
     assert calls["n"] == 0
 
 
-def test_document_frontmatter_warning_names_source(monkeypatch, capsys):
-    # 经 _translate_document 的 frontmatter 修复警告携带 source
-    outputs = iter(["坏译文", "还是坏", "依然坏", "正文译文"])
+def test_document_frontmatter_no_repair_warning(monkeypatch, capsys):
+    # frontmatter 不再校验:经 _translate_document 无重译、无警告,译文直接采用
+    outputs = iter(["---\n标题: 你好\n---"] * 3 + ["正文译文"])
     monkeypatch.setattr(api, "translate_text", lambda *a, **k: next(outputs))
     text = "---\ntitle: Hello\n---\n\nBody"
     result = translator._translate_document(text, [], "http://x", "m", source="docs/a.md")
-    assert "title: Hello" in result  # frontmatter 回退原文,结构保留
+    assert "标题: 你好" in result
+    assert "title: Hello" not in result
     err = capsys.readouterr().err
-    assert "md2zh: 警告: docs/a.md: frontmatter重译耗尽,保留原文" in err
+    assert "frontmatter" not in err
 
 
 def test_translate_file_warning_names_path(monkeypatch, tmp_path, capsys):
