@@ -67,6 +67,16 @@ def test_build_prompt_without_context_has_no_isolation_constraint():
     assert "不得翻译或输出【上下文参考】" not in prompt
 
 
+def test_build_prompt_sparse_constraints():
+    # 稀疏化实验:约束并条,不再逐项点名加黑与链接标记
+    prompt = api.build_prompt("x", [], "")
+    assert "严格保留 markdown 语法结构,全部格式标记与链接结构原样保留,仅翻译文字内容。" in prompt
+    assert "不得翻译或修改 @@@...@@@ 占位符。" in prompt
+    assert "表格保持行数与列数,分隔行保持。" in prompt
+    assert "加黑标记必须成对出现" not in prompt
+    assert "只翻译显示文本" not in prompt
+
+
 def test_build_frontmatter_prompt():
     prompt = api.build_frontmatter_prompt("---\ntitle: Hi\n---", [], "")
     assert "key 保持不变,只翻译 value" in prompt
