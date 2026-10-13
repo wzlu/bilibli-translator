@@ -207,7 +207,7 @@ def test_max_threads_passthrough(monkeypatch, tmp_path, argv, expected):
     seen: dict = {}
 
     def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
-                       ignore_matcher, max_threads):
+                       ignore_matcher, max_threads, ollama=False):
         seen["max_threads"] = max_threads
         return translator.EX_OK
 
@@ -244,3 +244,96 @@ def test_help_contains_max_threads(capsys):
         cli.main(["--help"])
     assert e.value.code == 0
     assert "-c N, --max-threads N" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("extra, msg", [
+    (["--api-base", "http://x/v1"], "--ollama 与 --api-base 不能同时使用"),
+    (["--model", "m"], "--ollama 与 --model 不能同时使用"),
+    (["-c", "2"], "--ollama 强制单线程"),
+])
+def test_ollama_conflicts_exit_64(extra, msg, capsys):
+    # --ollama 与显式后端参数冲突,按用法错误退出 64
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--ollama", *extra, "a.md"])
+    assert e.value.code == translator.EX_USAGE
+    assert msg in capsys.readouterr().err
+
+
+def test_ollama_resolves_defaults_and_single_thread(monkeypatch, tmp_path):
+    # --ollama 缺省解析:本地端点 + index-translate-9b:latest + 单线程,标志透传
+    seen = {}
+
+    def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
+                       ignore_matcher, max_threads, ollama=False):
+        seen.update(api_base=api_base, model=model,
+                    max_threads=max_threads, ollama=ollama)
+        return translator.EX_OK
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+    monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
+    monkeypatch.setattr(translator, "run_batch", fake_run_batch)
+    monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
+    assert cli.main(["--filelist", "l.txt", "--ollama"]) == translator.EX_OK
+    assert seen["api_base"] == api.OLLAMA_API_BASE
+    assert seen["model"] == api.OLLAMA_MODEL
+    assert seen["max_threads"] == 1
+    assert seen["ollama"] is True
+
+
+def test_no_ollama_defaults_unchanged(monkeypatch, tmp_path):
+    # 不带 --ollama 的缺省解析与现行一致:线上端点 + 默认模型 + 10 线程
+    seen = {}
+
+    def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
+                       ignore_matcher, max_threads, ollama=False):
+        seen.update(api_base=api_base, model=model,
+                    max_threads=max_threads, ollama=ollama)
+        return translator.EX_OK
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+    monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
+    monkeypatch.setattr(translator, "run_batch", fake_run_batch)
+    monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
+    assert cli.main(["--filelist", "l.txt"]) == translator.EX_OK
+    assert seen["api_base"] == api.DEFAULT_API_BASE
+    assert seen["model"] == api.DEFAULT_MODEL
+    assert seen["max_threads"] == 10
+    assert seen["ollama"] is False
+
+
+def test_ollama_with_c1_is_legal(monkeypatch, tmp_path):
+    # -c 1 与 --ollama 不冲突(与强制单线程一致)
+    src = tmp_path / "A.md"
+    src.write_text("# Hi", encoding="utf-8")
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    assert cli.main([str(src), "--ollama", "-c", "1"]) == translator.EX_OK
+    assert (tmp_path / "A_zh.md").exists()
+
+
+def test_ollama_single_file_end_to_end(monkeypatch, tmp_path):
+    # 单文件 + --ollama:api_base/model 解析为本地值,ollama 透传到 API 层
+    src = tmp_path / "A.md"
+    src.write_text("# Hi", encoding="utf-8")
+    calls = {}
+
+    def fake_translate(api_base, model, prompt, max_tokens, ollama=False):
+        calls.update(api_base=api_base, model=model, ollama=ollama)
+        return "# 你好"
+
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+    monkeypatch.setattr(api, "translate_text", fake_translate)
+    assert cli.main([str(src), "--ollama"]) == translator.EX_OK
+    assert calls["api_base"] == api.OLLAMA_API_BASE
+    assert calls["model"] == api.OLLAMA_MODEL
+    assert calls["ollama"] is True
+
+
+def test_help_contains_ollama(capsys):
+    # --help 输出含 --ollama 选项
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--help"])
+    assert e.value.code == 0
+    assert "--ollama" in capsys.readouterr().out

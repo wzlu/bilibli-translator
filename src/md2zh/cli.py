@@ -32,13 +32,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="覆盖已存在的 *_zh.md(默认跳过)")
     parser.add_argument("--glossary", metavar="FILE",
                         help=f"术语表文件(JSON);缺省加载 {api.DEFAULT_GLOSSARY}")
-    parser.add_argument("--api-base", default=api.DEFAULT_API_BASE,
+    parser.add_argument("--api-base", default=None,
                         help=f"翻译 API 地址(默认 {api.DEFAULT_API_BASE})")
-    parser.add_argument("--model", default=api.DEFAULT_MODEL,
+    parser.add_argument("--model", default=None,
                         help=f"模型(默认 {api.DEFAULT_MODEL})")
+    parser.add_argument("--ollama", action="store_true",
+                        help="使用本地 ollama 翻译(端点 http://localhost:11434/v1,"
+                             "模型 index-translate-9b:latest,强制单线程)")
     parser.add_argument("--repair", type=int, choices=range(3), default=0,
                         help="校验失败后的重译次数 0-2(默认 0;失败一律采用译文,不回退原文)")
-    parser.add_argument("-c", "--max-threads", type=int, default=10, metavar="N",
+    parser.add_argument("-c", "--max-threads", type=int, default=None, metavar="N",
                         help="--filelist 模式最大并发线程数(默认 10;仅批量模式生效)")
     parser.add_argument("--version", action="version", version=f"md2zh {__version__}")
     parser.epilog = (
@@ -48,6 +51,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "  md2zh --filelist list.txt -c 5     批量翻译,最多 5 个线程并行(默认 10)\n"
         "  md2zh ABC.md --force              覆盖已存在的译文\n"
         "  md2zh ABC.md --glossary g.json    指定术语表\n"
+        "  md2zh ABC.md --ollama             使用本地 ollama 离线翻译(强制单线程)\n"
         "  cat ABC.md | md2zh -              管道过滤器(stdin → stdout)\n"
         "  md2zh ABC.md --repair 2            校验失败后重译至多 2 次(默认不重译)"
     )
@@ -56,8 +60,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("FILE 与 --filelist 不能同时使用")
     if not args.file and not args.filelist:
         parser.error("需要 FILE 或 --filelist 其中之一")
-    if args.max_threads < 1:
-        parser.error("-c/--max-threads 必须是正整数")
+    if args.ollama:
+        # --ollama 锁定本地端点与模型:显式后端参数冲突即用法错误
+        if args.api_base is not None:
+            parser.error("--ollama 与 --api-base 不能同时使用")
+        if args.model is not None:
+            parser.error("--ollama 与 --model 不能同时使用")
+        if args.max_threads is not None and args.max_threads > 1:
+            parser.error("--ollama 强制单线程,不能与 -c/--max-threads N(N>1) 同时使用")
+        args.api_base = api.OLLAMA_API_BASE
+        args.model = api.OLLAMA_MODEL
+        args.max_threads = 1
+    else:
+        # 哨兵回填:未显式传参时取默认值,显式传参(含 -c 0/-1)走既有校验
+        if args.api_base is None:
+            args.api_base = api.DEFAULT_API_BASE
+        if args.model is None:
+            args.model = api.DEFAULT_MODEL
+        if args.max_threads is None:
+            args.max_threads = 10
+        if args.max_threads < 1:
+            parser.error("-c/--max-threads 必须是正整数")
     return args
 
 
@@ -76,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.file == "-":
             return translator.run_stdin(glossary=glossary,
                                         api_base=args.api_base, model=args.model,
-                                        repair=args.repair)
+                                        repair=args.repair, ollama=args.ollama)
 
         if args.filelist:
             try:
@@ -92,10 +115,11 @@ def main(argv: list[str] | None = None) -> int:
             return translator.run_batch(paths, force=args.force, glossary=glossary,
                                         api_base=args.api_base, model=args.model,
                                         ignore_matcher=matcher, repair=args.repair,
-                                        max_threads=args.max_threads)
+                                        max_threads=args.max_threads,
+                                        ollama=args.ollama)
         return translator.run_single(args.file, force=args.force, glossary=glossary,
                                      api_base=args.api_base, model=args.model,
-                                     repair=args.repair)
+                                     repair=args.repair, ollama=args.ollama)
     except KeyboardInterrupt:
         print("\nmd2zh: 已中断", file=sys.stderr)
         return translator.EX_SIGINT
