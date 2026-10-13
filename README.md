@@ -35,6 +35,7 @@
 - 🐚 **unix-cli 规范**:stdout 只输出数据——文件/批量模式输出译文路径(可管道),stdin 模式输出译文正文;进度/警告走 stderr;标准退出码;`--help`/`--version` 完备
 - 🚫 **忽略列表**:`--filelist` 批量模式自动读取当前目录 `.translateignore`(精确路径 + 通配模式),命中文件略过不翻译
 - ⚡ **批量并发**:`--filelist` 批量模式多线程并行翻译(默认最多 10,`-c N` 可调),译文路径完成即输出(顺序不定)
+- 🏠 **本地离线翻译**:`--ollama` 使用本机 ollama(`index-translate-9b:latest`)离线翻译,内容不出本机;强制单线程(本地 9B 模型并发无收益)
 
 ## 安装
 
@@ -190,13 +191,14 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 - stdin 模式:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出);输出统一 LF(与文件模式行尾保真不同);
 - 忽略列表通配匹配:`**` 与段内 `*` 语义同 gitignore 子集;无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`),损害有界(多跳过可在 stderr 审计)。
 - 批量模式 Ctrl-C/下游管道关闭后,运行中的请求至多延续「重试×超时」(最坏约 6 分钟)进程才退出;未启动任务会被取消。
+- `--ollama` 本地后端:模型 thinking 输出计入输出预算(max_tokens),超长输出可能被静默截断;120s 超时对本地慢速推理余量有限;代理环境下 localhost 请求未豁免 HTTP_PROXY(需直连时自行设置 no_proxy)。
 
 ## 参考
 
 - 代码仓库:https://github.com/wzlu/bilibli-translator
 - 变更日志:`CHANGELOG.md`
-- 设计规格:`docs/superpowers/specs/2026-10-12-md2zh-translator-design.md`(批量多线程:`2026-10-13-filelist-multithreading-design.md`)
-- 实施计划:`docs/superpowers/plans/2026-10-12-md2zh-translator.md`(批量多线程:`2026-10-13-filelist-multithreading.md`)
+- 设计规格:`docs/superpowers/specs/2026-10-12-md2zh-translator-design.md`(批量多线程:`2026-10-13-filelist-multithreading-design.md`;本地 ollama 后端:`2026-10-13-ollama-local-backend-design.md`)
+- 实施计划:`docs/superpowers/plans/2026-10-12-md2zh-translator.md`(批量多线程:`2026-10-13-filelist-multithreading.md`;本地 ollama 后端:`2026-10-13-ollama-local-backend.md`)
 - API 参考实现:`references/call_api.py`
 
 ## 许可证
