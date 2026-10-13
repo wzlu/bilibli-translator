@@ -91,7 +91,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 ## Recent Updates (Updated: 2026-10-13)
 
-v0.4.0 filelist 批量多线程:bbbc777..b48ec5b 共 10 个提交(设计/计划 + 任务 1-4 实施与审查修复),本提交为文档同步;148/148 测试通过。新增 `-c N, --max-threads N`(默认 10,仅批量模式生效);`run_batch` 改 ThreadPoolExecutor 并行:忽略命中前置不提交、译文路径完成即输出(乱序)、未知异常兜底计失败;批量 stderr(线程内与主线程)统一经模块级锁 `_warn` 串行化;终审修复:任意基类异常(KeyboardInterrupt/下游管道关闭)取消未启动任务后重抛——此前管道关闭时 run_batch 未关停线程池,atexit 哨兵排在任务队列尾部,进程退出前会译完整批剩余文件,现已闭环并由 broken_pipe 测试锁定。汇总与退出码契约不变;已 fast-forward 合并回 main,尚未推送 origin 与打 tag。
+v0.4.0 filelist 批量多线程:bbbc777..b48ec5b 共 10 个提交(设计/计划 + 任务 1-4 实施与审查修复),本提交为文档同步;148/148 测试通过。新增 `-c N, --max-threads N`(默认 10,仅批量模式生效);`run_batch` 改 ThreadPoolExecutor 并行:忽略命中前置不提交、译文路径完成即输出(乱序)、未知异常兜底计失败;批量 stderr(线程内与主线程)统一经模块级锁 `_warn` 串行化;终审修复:任意基类异常(KeyboardInterrupt/下游管道关闭)取消未启动任务后重抛——此前管道关闭时 run_batch 未关停线程池,atexit 哨兵排在任务队列尾部,进程退出前会译完整批剩余文件,现已闭环并由 broken_pipe 测试锁定。汇总与退出码契约不变;已 fast-forward 合并回 main 并推送 origin,已打 tag v0.4.0。真实 API 复验(opencode 130 文件,`-c 5`):成功 117、跳过 13、失败 0,完成即输出(乱序)与 stderr 无行间交错;3 块「占位符丢失」警告(2.6%,不回退语义既定取舍)。
 
 v0.3.0 修复重译开关与不回退语义:0e8aa87..880c704 共 7 个提交(计划 + 任务 1-2 实施),本提交为文档同步;129/129 测试通过。--repair N 开关(默认 0);校验失败一律采用译文,不再回退原文。真实 API 复验:opensre 默认 repair=0 无「保留原文」警告、链接失败块仅 1 次「校验失败,采用译文」警告(默认不重译生效),该块为中译文且无 @@@ 残留;SKILL.md 0 警告;观察项 --repair 2:重译(1/2)→(2/2)→耗尽,链接类重译仍不收敛(与历史一致),耗尽后采用译文。
 
@@ -119,7 +119,7 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - stdin 模式注意:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出,不调用 API);输出统一 LF(与文件模式行尾保真不同);`run_stdin` 的断管/读写错误分支无专属测试(行为经 main 处理器等价覆盖)
 - 已知限制(终审裁决随行发布):SSE `delta` 为非 dict 时的极端畸形分片未防护(与参考实现同款);表格行跨表按全局下标配对、紧凑表格 `|--|--|` 不识别等启发式边界——最坏后果为无谓重译或该块以损坏译文写出(警告提示),损害有界
 - v0.3.0 已知限制(终审分流随行发布):`repair` 为负值的库级误用会静默产出空译文(CLI `choices` 已拦截,仅直接库调用可达);校验失败被采用的块可能残留字面 `@@@...@@@` 令牌(不回退语义的既定取舍,实测无残留);stdin/批量模式的 `repair` 透传无经 `main()` 的专属测试(与文件模式同构,行为经代码核验与 file 模式测试覆盖)
-- v0.4.0 已知限制(终审随行发布):批量模式 Ctrl+C/下游管道关闭后,运行中的请求至多延续重试×超时(最坏约 6 分钟)进程才退出(未启动任务已取消,`test_run_batch_broken_pipe_cancels_pending` 锁定该语义);`-c` 无上界(线程按文件数懒创建,用户自限);批量译文路径完成即输出、顺序不定(按设计);两个时序测试依赖 0.5s/0.05s 时差(10 倍余量,复跑稳定)
+- v0.4.0 已知限制(终审随行发布):批量模式 Ctrl+C/下游管道关闭后,运行中的请求至多延续重试×超时(最坏约 6 分钟)进程才退出(未启动任务已取消,`test_run_batch_broken_pipe_cancels_pending` 锁定该语义);`-c` 无上界(线程按文件数懒创建,用户自限);批量译文路径完成即输出、顺序不定(按设计);两个时序测试依赖 0.5s/0.05s 时差(10 倍余量,复跑稳定);真实 API 复验实测 3/117 块「占位符丢失」(INLINE 令牌,采用译文并警告,不回退语义既定取舍)
 - 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
-- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main;本地 main 已至 v0.4.0 但尚未推送与打 tag,远程最新 tag 仍为 v0.3.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
+- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.4.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
