@@ -722,3 +722,39 @@ def test_run_batch_threads_write_zh_files(monkeypatch, tmp_path):
         assert os.path.exists(zh)
         with open(zh, encoding="utf-8") as f:
             assert "# 你好" in f.read()
+
+
+def test_run_batch_keyboard_interrupt_does_not_wait(monkeypatch):
+    # KI 时不等待运行中任务:run_batch 应在第二个任务仍在运行期间重新抛出
+    task2_running = threading.Event()
+    release = threading.Event()
+    ki_raised = threading.Event()
+
+    def fake(src_path, *, force, glossary, api_base, model, repair):
+        if src_path == "first.md":
+            # 等第二个任务进入运行态再抛 KI,消除取队竞态:确保中断时确有运行中任务
+            task2_running.wait(5)
+            raise KeyboardInterrupt
+        task2_running.set()
+        release.wait(10)
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+
+    def run():
+        try:
+            translator.run_batch(["first.md", "second.md"], force=False, glossary=[],
+                                 api_base="http://x", model="m", max_threads=2)
+        except KeyboardInterrupt:
+            ki_raised.set()
+
+    t = threading.Thread(target=run)
+    t.start()
+    try:
+        assert task2_running.wait(5), "第二个任务未开始运行"
+        # 关键断言:task2 仍在运行时 KI 已重新抛出(不等待关停)
+        assert ki_raised.wait(5), "run_batch 等待了运行中任务才重新抛出"
+    finally:
+        release.set()
+    t.join(10)
+    assert not t.is_alive()

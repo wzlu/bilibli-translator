@@ -239,34 +239,36 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
             ignored += 1
         else:
             todo.append(p)
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        try:
-            futures = {executor.submit(translate_file, p, force=force, glossary=glossary,
-                                       api_base=api_base, model=model, repair=repair): p
-                       for p in todo}
-            for fut in as_completed(futures):
-                p = futures[fut]
-                try:
-                    result = fut.result()
-                except Exception as e:
-                    # 未知回归兜底:单文件异常不拖垮批量,计入失败继续;
-                    # KeyboardInterrupt 是 BaseException,不在此列,走外层处理
-                    print(f"md2zh: 失败 {p}: {e}", file=sys.stderr)
-                    failed += 1
-                    continue
-                if result.status == "ok":
-                    print(result.detail, flush=True)
-                    ok += 1
-                elif result.status == "skipped":
-                    print(f"md2zh: 跳过 {p}: {result.detail}", file=sys.stderr)
-                    skipped += 1
-                else:
-                    print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)
-                    failed += 1
-        except KeyboardInterrupt:
-            # 取消未启动任务、不等待运行中任务;cli.main 捕获后返回 130
-            executor.shutdown(wait=False, cancel_futures=True)
-            raise
+    executor = ThreadPoolExecutor(max_workers=max_threads)
+    try:
+        futures = {executor.submit(translate_file, p, force=force, glossary=glossary,
+                                   api_base=api_base, model=model, repair=repair): p
+                   for p in todo}
+        for fut in as_completed(futures):
+            p = futures[fut]
+            try:
+                result = fut.result()
+            except Exception as e:
+                # 未知回归兜底:单文件异常不拖垮批量,计入失败继续;
+                # KeyboardInterrupt 是 BaseException,不在此列,走外层处理
+                print(f"md2zh: 失败 {p}: {e}", file=sys.stderr)
+                failed += 1
+                continue
+            if result.status == "ok":
+                print(result.detail, flush=True)
+                ok += 1
+            elif result.status == "skipped":
+                print(f"md2zh: 跳过 {p}: {result.detail}", file=sys.stderr)
+                skipped += 1
+            else:
+                print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)
+                failed += 1
+    except KeyboardInterrupt:
+        # 取消未启动任务;不等待运行中请求(进程退出时由解释器 join 非守护 worker),
+        # 主线程立即返回,cli.main 打印「已中断」后以 130 退出
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
+    executor.shutdown()
     print(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},忽略 {ignored},失败 {failed}",
           file=sys.stderr)
     return EX_PARTIAL if failed else EX_OK

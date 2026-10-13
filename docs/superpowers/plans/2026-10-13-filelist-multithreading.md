@@ -297,6 +297,42 @@ def test_run_batch_threads_write_zh_files(monkeypatch, tmp_path):
         assert os.path.exists(zh)
         with open(zh, encoding="utf-8") as f:
             assert "# 你好" in f.read()
+
+
+def test_run_batch_keyboard_interrupt_does_not_wait(monkeypatch):
+    # KI 时不等待运行中任务:run_batch 应在第二个任务仍在运行期间重新抛出
+    task2_running = threading.Event()
+    release = threading.Event()
+    ki_raised = threading.Event()
+
+    def fake(src_path, *, force, glossary, api_base, model, repair):
+        if src_path == "first.md":
+            # 等第二个任务进入运行态再抛 KI,消除取队竞态:确保中断时确有运行中任务
+            task2_running.wait(5)
+            raise KeyboardInterrupt
+        task2_running.set()
+        release.wait(10)
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+
+    def run():
+        try:
+            translator.run_batch(["first.md", "second.md"], force=False, glossary=[],
+                                 api_base="http://x", model="m", max_threads=2)
+        except KeyboardInterrupt:
+            ki_raised.set()
+
+    t = threading.Thread(target=run)
+    t.start()
+    try:
+        assert task2_running.wait(5), "第二个任务未开始运行"
+        # 关键断言:task2 仍在运行时 KI 已重新抛出(不等待关停)
+        assert ki_raised.wait(5), "run_batch 等待了运行中任务才重新抛出"
+    finally:
+        release.set()
+    t.join(10)
+    assert not t.is_alive()
 ```
 
 注意:文件顶部需补充 `import os`(现仅 import io、sys);如已有则跳过。
@@ -335,34 +371,36 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
             ignored += 1
         else:
             todo.append(p)
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        try:
-            futures = {executor.submit(translate_file, p, force=force, glossary=glossary,
-                                       api_base=api_base, model=model, repair=repair): p
-                       for p in todo}
-            for fut in as_completed(futures):
-                p = futures[fut]
-                try:
-                    result = fut.result()
-                except Exception as e:
-                    # 未知回归兜底:单文件异常不拖垮批量,计入失败继续;
-                    # KeyboardInterrupt 是 BaseException,不在此列,走外层处理
-                    print(f"md2zh: 失败 {p}: {e}", file=sys.stderr)
-                    failed += 1
-                    continue
-                if result.status == "ok":
-                    print(result.detail, flush=True)
-                    ok += 1
-                elif result.status == "skipped":
-                    print(f"md2zh: 跳过 {p}: {result.detail}", file=sys.stderr)
-                    skipped += 1
-                else:
-                    print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)
-                    failed += 1
-        except KeyboardInterrupt:
-            # 取消未启动任务、不等待运行中任务;cli.main 捕获后返回 130
-            executor.shutdown(wait=False, cancel_futures=True)
-            raise
+    executor = ThreadPoolExecutor(max_workers=max_threads)
+    try:
+        futures = {executor.submit(translate_file, p, force=force, glossary=glossary,
+                                   api_base=api_base, model=model, repair=repair): p
+                   for p in todo}
+        for fut in as_completed(futures):
+            p = futures[fut]
+            try:
+                result = fut.result()
+            except Exception as e:
+                # 未知回归兜底:单文件异常不拖垮批量,计入失败继续;
+                # KeyboardInterrupt 是 BaseException,不在此列,走外层处理
+                print(f"md2zh: 失败 {p}: {e}", file=sys.stderr)
+                failed += 1
+                continue
+            if result.status == "ok":
+                print(result.detail, flush=True)
+                ok += 1
+            elif result.status == "skipped":
+                print(f"md2zh: 跳过 {p}: {result.detail}", file=sys.stderr)
+                skipped += 1
+            else:
+                print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)
+                failed += 1
+    except KeyboardInterrupt:
+        # 取消未启动任务;不等待运行中请求(进程退出时由解释器 join 非守护 worker),
+        # 主线程立即返回,cli.main 打印「已中断」后以 130 退出
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
+    executor.shutdown()
     print(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},忽略 {ignored},失败 {failed}",
           file=sys.stderr)
     return EX_PARTIAL if failed else EX_OK
@@ -372,7 +410,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
 
 Run: `python -m pytest -v`
 
-Expected: 全部 PASS(135 + 7 = 142 项)。旧批量测试改走线程路径,断言仅用 `in` 匹配,不受输出乱序影响。
+Expected: 全部 PASS(135 + 8 = 143 项)。旧批量测试改走线程路径,断言仅用 `in` 匹配,不受输出乱序影响。
 
 - [ ] **Step 5: 提交**
 
@@ -447,7 +485,7 @@ def _warn(message: str) -> None:
 
 Run: `python -m pytest -v`
 
-Expected: 全部 PASS(142 + 1 = 143 项)。既有警告测试(`test_chunk_repair_warning_*`、`test_translate_file_warning_names_path` 等)断言消息文本不变,须原样通过。
+Expected: 全部 PASS(143 + 1 = 144 项)。既有警告测试(`test_chunk_repair_warning_*`、`test_translate_file_warning_names_path` 等)断言消息文本不变,须原样通过。
 
 - [ ] **Step 5: 提交**
 
@@ -535,7 +573,7 @@ md2zh --filelist list.txt -c 5
 - **批量多线程**:--filelist 用 ThreadPoolExecutor(默认 10,可 -c 调整)并行翻译,忽略命中前置不提交,完成即输出(乱序),计数与汇总在主线程聚合;线程内 stderr 警告经模块级锁串行化
 ```
 
-- 「Recent Updates」标题下插入 v0.4.0 条目(形式仿 v0.3.0 条目,内容:CLI 新增 -c/--max-threads,run_batch 线程池化、完成即输出、忽略前置、未知异常兜底、stderr 锁;测试数按 pytest 实际输出更新为 143);Overview 与「Development Workflow」中「129 项」同步为 143 项。
+- 「Recent Updates」标题下插入 v0.4.0 条目(形式仿 v0.3.0 条目,内容:CLI 新增 -c/--max-threads,run_batch 线程池化、完成即输出、忽略前置、未知异常兜底、stderr 锁;测试数按 pytest 实际输出更新为 144);Overview 与「Development Workflow」中「129 项」同步为 144 项。
 
 **docs/superpowers/specs/2026-10-12-md2zh-translator-design.md** §13 手工验证清单追加一条:
 
@@ -547,7 +585,7 @@ md2zh --filelist list.txt -c 5
 
 Run: `python -m pytest -v --junitxml=reports/junit.xml`
 
-Expected: 143/143 全部 PASS,`reports/junit.xml` 生成。
+Expected: 144/144 全部 PASS,`reports/junit.xml` 生成。
 
 - [ ] **Step 5: 提交**
 
@@ -564,4 +602,4 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 - **规格覆盖**:规格 §2 需求 1-7 分别由 Task 1(需求 1、2、6)、Task 2(需求 3、4、5)、Task 3(§4.3 互斥)、Task 4(需求 7)实现;§4.2 中断时序、§4.4 线程安全审计结论由 Task 2 代码与既有线程安全现状落实(审计为分析结论,无代码产物)。
 - **占位符扫描**:无 TBD/TODO;所有代码步骤含完整代码。
-- **类型一致性**:`run_batch` 签名(含 `max_threads: int = 10`)在 Task 1 与 Task 2 一致;`_warn(message: str) -> None` 在 Task 3 定义与测试一致;测试数预期 143 由逐任务累加计算。
+- **类型一致性**:`run_batch` 签名(含 `max_threads: int = 10`)在 Task 1 与 Task 2 一致;`_warn(message: str) -> None` 在 Task 3 定义与测试一致;测试数预期 144 由逐任务累加计算。
