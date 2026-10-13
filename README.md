@@ -3,8 +3,8 @@
 将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
-![Version](https://img.shields.io/badge/version-0.3.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-129%20passed-brightgreen)
+![Version](https://img.shields.io/badge/version-0.4.0-brightgreen)
+![Tests](https://img.shields.io/badge/tests-147%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -34,6 +34,7 @@
 - 🔌 **管道过滤器**:`md2zh -` 从 stdin 读入、译文写 stdout,可直接嵌入 unix 管道;字节保真输出(绕开平台行尾翻译,统一 LF)
 - 🐚 **unix-cli 规范**:stdout 只输出数据——文件/批量模式输出译文路径(可管道),stdin 模式输出译文正文;进度/警告走 stderr;标准退出码;`--help`/`--version` 完备
 - 🚫 **忽略列表**:`--filelist` 批量模式自动读取当前目录 `.translateignore`(精确路径 + 通配模式),命中文件略过不翻译
+- ⚡ **批量并发**:`--filelist` 批量模式多线程并行翻译(默认最多 10,`-c N` 可调),译文路径完成即输出(顺序不定)
 
 ## 安装
 
@@ -56,6 +57,9 @@ md2zh ABC.md
 # 批量翻译:list.txt 每行一个 md 文件,# 开头的行与空行被忽略
 md2zh --filelist list.txt
 # .translateignore 中列出的文件在批量模式下略过(每行一个路径或通配模式,# 注释)
+
+# 批量翻译,最多 5 个线程并行(默认 10;完成即输出,顺序不定)
+md2zh --filelist list.txt -c 5
 
 # 覆盖已存在的译文(默认跳过)
 md2zh ABC.md --force
@@ -81,7 +85,8 @@ cat ABC.md | md2zh -
 - 校验失败输出警告并采用译文,可用 `--repair N` 开启重译(文件仍算成功生成);
 - stdout 只输出数据:文件/批量模式输出成功译文路径(每行一个),stdin 模式输出译文正文;进度、跳过/忽略提示、警告、汇总全部走 stderr;
 - 错误消息格式:`md2zh: 上下文: 信息`;用户可见错误不打印 Python 堆栈;
-- 输出编码 UTF-8;源文件须为 UTF-8(含 BOM 亦可),否则返回退出码 65。
+- 输出编码 UTF-8;源文件须为 UTF-8(含 BOM 亦可),否则返回退出码 65;
+- `--filelist` 批量模式多线程并行(默认最多 10,可用 `-c N` 调整),译文路径完成即输出(顺序不定);
 
 ## 退出码
 
@@ -136,7 +141,7 @@ POST https://index-translate.bilibili.com/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(129 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(147 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -158,7 +163,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ├── README.md / CHANGELOG.md / LICENSE / CLAUDE.md / pyproject.toml
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
 │                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
-├── tests/              # 129 项测试,API 全 mock
+├── tests/              # 147 项测试,API 全 mock
 ├── data/sample_en.md   # 手工验证样例
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)

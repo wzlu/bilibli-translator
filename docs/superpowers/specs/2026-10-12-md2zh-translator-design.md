@@ -217,4 +217,5 @@ D:\ops\bilibli-translator\
 3. `--filelist` 批量处理,含坏行(不存在文件、非 md、空行、注释行),观察跳过与汇总;
 4. 已存在 `_zh.md` 时默认跳过,`--force` 覆盖;
 5. 自定义术语表文件与默认 `~/.config/md2zh/glossary.json` 各自生效;
-6. 错误场景:不存在的单文件(66)、网络断开(75)、Ctrl-C(130)。
+6. 错误场景:不存在的单文件(66)、网络断开(75)、Ctrl-C(130);
+7. 批量并发:`md2zh --filelist data/untranslated_filelist.txt -c 5`,观察多线程并行与乱序输出、汇总计数正确、退出码契约不变。

@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-10-13
+
+### 新增
+
+- `-c N, --max-threads N`:`--filelist` 批量模式最大并发线程数(默认 10,仅批量模式生效);译文路径完成即输出(乱序),汇总与退出码契约不变
+
 ## [0.3.0] - 2026-10-13
 
 ### 新增
@@ -107,7 +113,8 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.4.0
 [0.3.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.3.0
 [0.2.5]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.5
 [0.2.4]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.4

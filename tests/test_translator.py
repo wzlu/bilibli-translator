@@ -799,6 +799,7 @@ def test_warn_serializes_concurrent_lines(monkeypatch):
         t.start()
     for t in threads:
         t.join()
+    assert writer.buf, "并发 _warn 无输出,断言失效"
     for line in writer.buf.split("\n"):
         if line:
             assert line in (msg_a, msg_b), "并发 _warn 行间交错"
@@ -821,3 +822,34 @@ def test_run_batch_stderr_goes_through_warn(monkeypatch):
     assert rc == translator.EX_PARTIAL
     assert any("失败 a.md" in m for m in seen)
     assert any("汇总: 成功 0,跳过 0,忽略 0,失败 1" in m for m in seen)
+
+
+def test_run_batch_stderr_routes_all_branches(monkeypatch, tmp_path):
+    # 路由契约补全:忽略/跳过/兜底三条分支同样经 _warn
+    seen: list[str] = []
+
+    def fake_warn(message):
+        seen.append(message)
+
+    monkeypatch.setattr(translator, "_warn", fake_warn)
+    p = tmp_path / "a.md"
+    p.write_text("# Hi", encoding="utf-8")
+    ti = tmp_path / ".translateignore"
+    ti.write_text(str(p) + "\n", encoding="utf-8")
+    matcher = ignore.load_ignore(str(ti))
+
+    def fake_translate(src_path, *, force, glossary, api_base, model, repair):
+        if src_path == "skip.md":
+            return translator.TranslateResult("skipped", "译文已存在", 0)
+        if src_path == "boom.md":
+            raise RuntimeError("模拟未知回归")
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake_translate)
+    rc = translator.run_batch([str(p), "skip.md", "boom.md"], force=False, glossary=[],
+                              api_base="http://x", model="m", ignore_matcher=matcher)
+    assert rc == translator.EX_PARTIAL
+    assert any("忽略" in m and "a.md" in m for m in seen)
+    assert any("跳过 skip.md" in m for m in seen)
+    assert any("失败 boom.md" in m for m in seen)
+    assert any("汇总: 成功 0,跳过 1,忽略 1,失败 1" in m for m in seen)

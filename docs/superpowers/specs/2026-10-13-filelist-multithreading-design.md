@@ -64,7 +64,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
     todo: list[str] = []
     for p in paths:
         if ignore_matcher is not None and ignore_matcher.is_ignored(p):
-            print(f"md2zh: 忽略 {p}: 命中忽略列表", file=sys.stderr)
+            _warn(f"md2zh: 忽略 {p}: 命中忽略列表")
             ignored += 1
         else:
             todo.append(p)
@@ -80,17 +80,17 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
             except Exception as e:
                 # 未知回归兜底:单文件异常不拖垮批量,计入失败继续;
                 # KeyboardInterrupt 是 BaseException,不在此列,走外层处理
-                print(f"md2zh: 失败 {p}: {e}", file=sys.stderr)
+                _warn(f"md2zh: 失败 {p}: {e}")
                 failed += 1
                 continue
             if result.status == "ok":
                 print(result.detail, flush=True)
                 ok += 1
             elif result.status == "skipped":
-                print(f"md2zh: 跳过 {p}: {result.detail}", file=sys.stderr)
+                _warn(f"md2zh: 跳过 {p}: {result.detail}")
                 skipped += 1
             else:
-                print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)
+                _warn(f"md2zh: 失败 {p}: {result.detail}")
                 failed += 1
     except KeyboardInterrupt:
         # 取消未启动任务;不等待运行中请求(进程退出时由解释器 join 非守护 worker),
@@ -98,8 +98,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
         executor.shutdown(wait=False, cancel_futures=True)
         raise
     executor.shutdown()
-    print(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},忽略 {ignored},失败 {failed}",
-          file=sys.stderr)
+    _warn(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},忽略 {ignored},失败 {failed}")
     return EX_PARTIAL if failed else EX_OK
 ```
 

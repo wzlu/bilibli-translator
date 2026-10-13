@@ -2,7 +2,7 @@
 
 ## Overview
 
-将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.3.0。
+将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.4.0。
 
 ## Architecture
 
@@ -24,6 +24,7 @@
 - **frontmatter 独立翻译**:仅译 value,key 与 `---` 标记由提示词约束保持,不校验、不重译、不回退
 - **术语表**:`--glossary` 指定 JSON 文件(`{"英文": "中文"}`);缺省自动加载 `~/.config/md2zh/glossary.json`(不存在视为无术语表);以【硬性要求】专名/术语对照附加到每段请求
 - **忽略列表**:`--filelist` 批量模式自动读取当前目录 `.translateignore`(不存在视为无规则);命中文件略过不翻译(忽略优先于扩展名/存在性检查与 `--force`),计入汇总「忽略」数
+- **批量多线程**:`--filelist` 用 ThreadPoolExecutor(默认 10,可 `-c` 调整)并行翻译,忽略命中前置不提交,完成即输出(乱序),计数与汇总在主线程聚合;批量 stderr 串行化:批量模式线程内与主线程的 stderr 打印统一经模块级锁 `_warn` 串行化,消除行间交错;stdout 仅主线程写
 - **换行保真**:文件模式 CRLF 源输出 CRLF,LF 源输出 LF(读取期关闭行尾翻译、检测后管线内部统一 LF、写回源风格);stdin 模式统一 LF 输出(写前折叠混入的 CRLF)
 - **stdin 字节保真**:`md2zh -` 译文经 `sys.stdout.buffer` 字节写出(绕开平台行尾翻译),结尾无换行时补一个 `\n`;空输入直接成功退出不调 API
 
@@ -39,7 +40,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(129 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(147 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -61,6 +62,7 @@ POST {api_base}/chat/completions   # 默认 https://index-translate.bilibili.com
 ```
 md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
   --filelist LIST   文件列表(每行一个 md 文件,# 注释行忽略)
+  -c/--max-threads N --filelist 模式最大线程数(默认 10;仅批量生效)
   --force           覆盖已存在的 *_zh.md(默认跳过)
   --repair N        校验失败后的重译次数 0-2(默认 0;失败一律采用译文)
   --glossary FILE   术语表 JSON 文件(缺省加载用户配置目录默认文件)
@@ -88,6 +90,8 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 ```
 
 ## Recent Updates (Updated: 2026-10-13)
+
+v0.4.0 filelist 批量多线程:5847ff2..0bc4a2c 共 8 个提交(设计/计划 + 任务 1-3 实施与审查修复),本提交为文档同步;147/147 测试通过。新增 `-c N, --max-threads N`(默认 10,仅批量模式生效);`run_batch` 改 ThreadPoolExecutor 并行:忽略命中前置不提交、译文路径完成即输出(乱序)、未知异常兜底计失败、KeyboardInterrupt 不等待运行中请求;批量 stderr(线程内与主线程)统一经模块级锁 `_warn` 串行化;汇总与退出码契约不变。审查折入清扫:M1 补忽略/跳过/兜底分支路由测试(146→147)、M2 守卫测试空缓冲加固、M3 设计文档 §4.2 代码示意与实现对齐。
 
 v0.3.0 修复重译开关与不回退语义:0e8aa87..880c704 共 7 个提交(计划 + 任务 1-2 实施),本提交为文档同步;129/129 测试通过。--repair N 开关(默认 0);校验失败一律采用译文,不再回退原文。真实 API 复验:opensre 默认 repair=0 无「保留原文」警告、链接失败块仅 1 次「校验失败,采用译文」警告(默认不重译生效),该块为中译文且无 @@@ 残留;SKILL.md 0 警告;观察项 --repair 2:重译(1/2)→(2/2)→耗尽,链接类重译仍不收敛(与历史一致),耗尽后采用译文。
 
