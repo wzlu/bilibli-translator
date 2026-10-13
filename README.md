@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
 ![Version](https://img.shields.io/badge/version-0.4.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-147%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-148%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -141,7 +141,7 @@ POST https://index-translate.bilibili.com/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(147 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(148 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -163,7 +163,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ├── README.md / CHANGELOG.md / LICENSE / CLAUDE.md / pyproject.toml
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
 │                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
-├── tests/              # 147 项测试,API 全 mock
+├── tests/              # 148 项测试,API 全 mock
 ├── data/sample_en.md   # 手工验证样例
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)
@@ -174,7 +174,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 - 极罕见格式的畸形 API 响应(`delta` 字段为非对象)可能与参考实现同样触发错误(不影响正常使用);
 - frontmatter 识别与表格分块采用启发式:frontmatter 不校验、译文直接采用;校验失败一律采用译文并警告(不回退原文),格式正确性优先;
 - 校验失败采用译文意味着极端情况下个别损坏块以译文写出,stderr 会给出明确警告;
-- stdin 模式:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出);输出统一 LF(与文件模式行尾保真不同)。
+- stdin 模式:`--force` 为 no-op;纯空白输入静默退出(退出 0、无输出);输出统一 LF(与文件模式行尾保真不同);
 - 忽略列表通配匹配:`**` 与段内 `*` 语义同 gitignore 子集;无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`),损害有界(多跳过可在 stderr 审计)。
 - 批量模式 Ctrl-C/下游管道关闭后,运行中的请求至多延续「重试×超时」(最坏约 6 分钟)进程才退出;未启动任务会被取消。
 
@@ -182,8 +182,8 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 
 - 代码仓库:https://github.com/wzlu/bilibli-translator
 - 变更日志:`CHANGELOG.md`
-- 设计规格:`docs/superpowers/specs/2026-10-12-md2zh-translator-design.md`
-- 实施计划:`docs/superpowers/plans/2026-10-12-md2zh-translator.md`
+- 设计规格:`docs/superpowers/specs/2026-10-12-md2zh-translator-design.md`(批量多线程:`2026-10-13-filelist-multithreading-design.md`)
+- 实施计划:`docs/superpowers/plans/2026-10-12-md2zh-translator.md`(批量多线程:`2026-10-13-filelist-multithreading.md`)
 - API 参考实现:`references/call_api.py`
 
 ## 许可证
