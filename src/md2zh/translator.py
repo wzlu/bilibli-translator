@@ -272,9 +272,9 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
             else:
                 _warn(f"md2zh: 失败 {p}: {result.detail}")
                 failed += 1
-    except KeyboardInterrupt:
-        # 取消未启动任务;不等待运行中请求(进程退出时由解释器 join 非守护 worker),
-        # 主线程立即返回,cli.main 打印「已中断」后以 130 退出
+    except BaseException:
+        # 任意基类异常(KeyboardInterrupt / 下游管道关闭等):取消未启动任务、
+        # 不等待运行中请求,主线程立即返回;cli.main 按类型映射 130/141
         executor.shutdown(wait=False, cancel_futures=True)
         raise
     executor.shutdown()

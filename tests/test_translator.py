@@ -853,3 +853,44 @@ def test_run_batch_stderr_routes_all_branches(monkeypatch, tmp_path):
     assert any("跳过 skip.md" in m for m in seen)
     assert any("失败 boom.md" in m for m in seen)
     assert any("汇总: 成功 0,跳过 1,忽略 1,失败 1" in m for m in seen)
+
+
+def test_run_batch_broken_pipe_cancels_pending(monkeypatch):
+    # 下游管道关闭:重抛 BrokenPipeError 且排队任务被取消,不再翻译剩余队列
+    started: list[str] = []
+    release = threading.Event()
+
+    class _BrokenStdout:
+        def write(self, s):
+            raise BrokenPipeError
+
+        def flush(self):
+            pass
+
+    def fake(src_path, *, force, glossary, api_base, model, repair):
+        started.append(src_path)
+        if src_path != "f1.md":
+            release.wait(10)  # f2/f3 被取消则永不执行;未取消则阻塞于此
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(sys, "stdout", _BrokenStdout())
+    monkeypatch.setattr(translator, "translate_file", fake)
+    raised: dict = {}
+
+    def run():
+        try:
+            translator.run_batch(["f1.md", "f2.md", "f3.md"], force=False, glossary=[],
+                                 api_base="http://x", model="m", max_threads=1)
+        except BrokenPipeError:
+            raised["ok"] = True
+        finally:
+            release.set()
+
+    t = threading.Thread(target=run)
+    t.start()
+    t.join(10)
+    assert raised.get("ok"), "BrokenPipeError 未从 run_batch 重抛"
+    deadline = time.time() + 1  # 若未被取消,worker 会在宽限窗内启动 f2
+    while time.time() < deadline and len(started) == 1:
+        time.sleep(0.01)
+    assert started == ["f1.md"], "管道关闭后仍翻译剩余队列"

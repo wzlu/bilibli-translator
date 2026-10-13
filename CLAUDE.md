@@ -40,7 +40,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(147 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(148 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -91,7 +91,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 ## Recent Updates (Updated: 2026-10-13)
 
-v0.4.0 filelist 批量多线程:5847ff2..0bc4a2c 共 8 个提交(设计/计划 + 任务 1-3 实施与审查修复),本提交为文档同步;147/147 测试通过。新增 `-c N, --max-threads N`(默认 10,仅批量模式生效);`run_batch` 改 ThreadPoolExecutor 并行:忽略命中前置不提交、译文路径完成即输出(乱序)、未知异常兜底计失败、KeyboardInterrupt 不等待运行中请求;批量 stderr(线程内与主线程)统一经模块级锁 `_warn` 串行化;汇总与退出码契约不变。审查折入清扫:M1 补忽略/跳过/兜底分支路由测试(146→147)、M2 守卫测试空缓冲加固、M3 设计文档 §4.2 代码示意与实现对齐。
+v0.4.0 filelist 批量多线程:5847ff2..0bc4a2c 共 7 个提交(计划 + 任务 1-3 实施与审查修复),本提交为文档同步;148/148 测试通过。新增 `-c N, --max-threads N`(默认 10,仅批量模式生效);`run_batch` 改 ThreadPoolExecutor 并行:忽略命中前置不提交、译文路径完成即输出(乱序)、未知异常兜底计失败、KeyboardInterrupt 不等待运行中请求;批量 stderr(线程内与主线程)统一经模块级锁 `_warn` 串行化;汇总与退出码契约不变。审查折入清扫:M1 补忽略/跳过/兜底分支路由测试(146→147)、M2 守卫测试空缓冲加固、M3 设计文档 §4.2 代码示意与实现对齐。
 
 v0.3.0 修复重译开关与不回退语义:0e8aa87..880c704 共 7 个提交(计划 + 任务 1-2 实施),本提交为文档同步;129/129 测试通过。--repair N 开关(默认 0);校验失败一律采用译文,不再回退原文。真实 API 复验:opensre 默认 repair=0 无「保留原文」警告、链接失败块仅 1 次「校验失败,采用译文」警告(默认不重译生效),该块为中译文且无 @@@ 残留;SKILL.md 0 警告;观察项 --repair 2:重译(1/2)→(2/2)→耗尽,链接类重译仍不收敛(与历史一致),耗尽后采用译文。
 

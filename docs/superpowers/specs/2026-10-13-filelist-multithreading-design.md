@@ -92,9 +92,9 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
             else:
                 _warn(f"md2zh: 失败 {p}: {result.detail}")
                 failed += 1
-    except KeyboardInterrupt:
-        # 取消未启动任务;不等待运行中请求(进程退出时由解释器 join 非守护 worker),
-        # 主线程立即返回,cli.main 打印「已中断」后以 130 退出
+    except BaseException:
+        # 任意基类异常(KeyboardInterrupt / 下游管道关闭等):取消未启动任务、
+        # 不等待运行中请求,主线程立即返回;cli.main 按类型映射 130/141
         executor.shutdown(wait=False, cancel_futures=True)
         raise
     executor.shutdown()
@@ -106,7 +106,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
 
 - **计数与输出全在主线程**:无共享计数器,无数据竞争;「跳过/失败/忽略」消息与路径输出格式与现行完全一致;
 - **异常边界**:`translate_file` 已把 API/编码/OS 错误收敛为 `TranslateResult`;未知回归引发的异常由主线程 `except Exception` 兜底——计入失败并继续处理其余文件,不拖垮批量(维护「继续处理所有文件,最后汇总」契约);
-- **KeyboardInterrupt**:try 覆盖提交与收集两阶段,任意时点中断走 `shutdown(wait=False, cancel_futures=True)`:取消未启动任务、不等待运行中请求,主线程立即返回,`cli.main` 打印「已中断」后以 EX_SIGINT=130 退出;运行中 worker 为非守护线程,进程退出时由解释器 join(窗口为在跑请求的剩余重试×超时,最坏约 6 分钟,但不再阻塞反馈);
+- **中断与管道关闭**:try 覆盖提交与收集两阶段,任意基类异常(`KeyboardInterrupt`、stdout 打印遇下游管道关闭抛出的 `BrokenPipeError` 等)走 `shutdown(wait=False, cancel_futures=True)`:取消未启动任务、不等待运行中请求,主线程立即返回,`cli.main` 按类型映射 EX_SIGINT=130(已中断)/EX_SIGPIPE=141(下游管道关闭);若仅捕获 `KeyboardInterrupt`,`BrokenPipeError` 将穿出 `run_batch` 且跳过关停,排队任务仍被 worker 逐个执行(解释器退出时 atexit 哨兵排在任务队列尾部),批量全量翻译无法被打断;运行中 worker 为非守护线程,进程退出时由解释器 join(窗口为在跑请求的剩余重试×超时,最坏约 6 分钟,但不再阻塞反馈);
 - **裸 executor 收尾**:不用 `with`(其 `__exit__` 无条件 `shutdown(wait=True)`,会抵消「不等待」语义);常规路径在 try 之外显式 `executor.shutdown()`——任务已全部完成,立即返回,库级重复调用不泄漏空闲线程;
 
 ### 4.3 stderr 写入互斥(translator.py)
@@ -145,6 +145,7 @@ def _warn(message: str) -> None:
   - 真实线程集成:mock `api.translate_text`,对 3-4 个临时 md 文件(放置 `temp/`)跑 `run_batch(max_threads=4)`,断言全部 `*_zh.md` 生成且内容正确;
   - 兜底:替身抛 `RuntimeError`,断言计入失败、其余文件继续处理、退出码 1;
   - 中断路径:两任务替身,首个任务待第二个进入运行态后抛 `KeyboardInterrupt`,断言第二个任务仍在运行期间 `run_batch` 已重新抛出(不等待关停;worker 取队竞态经事件排序消除);
+  - 管道关闭路径:`_BrokenStdout` 替身令 stdout 打印抛 `BrokenPipeError`,三任务替身仅 f1 立即返回、f2/f3 阻塞于事件,断言 `BrokenPipeError` 从 `run_batch` 重抛且宽限窗内剩余队列不被启动(钉住 `except BaseException` 关停语义);
   - stderr 互斥:`test_warn_writes_message` 钉住 `_warn` 消息格式;并发行完整守卫:`_SplitWriter` 把每次 write 拆两半并让出 GIL,两线程并发 `_warn` 后断言每行完整(钉住锁);路由契约:monkeypatch `_warn`,断言 `run_batch` 主线程 stderr 打印(忽略/跳过/失败/兜底/汇总)全部经 `_warn`。
 - **test_version.py**:版本号 0.4.0。
 

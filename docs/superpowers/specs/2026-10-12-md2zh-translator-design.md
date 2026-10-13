@@ -210,6 +210,8 @@ D:\ops\bilibli-translator\
 
 并发翻译、增量翻译、双语对照输出、目录递归扫描、`--strict` 校验即报错模式、图片翻译、`--serve` 代理模式(call_api.py 已有,不复制)。
 
+(注:并发翻译已于 v0.4.0 落地,见 2026-10-13-filelist-multithreading-design.md)
+
 ## 13. 手工验证清单(实现完成后)
 
 1. `md2zh --help` / `md2zh --version` 正常,退出码 0;

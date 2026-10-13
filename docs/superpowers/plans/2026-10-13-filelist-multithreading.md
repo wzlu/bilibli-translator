@@ -333,6 +333,47 @@ def test_run_batch_keyboard_interrupt_does_not_wait(monkeypatch):
         release.set()
     t.join(10)
     assert not t.is_alive()
+
+
+def test_run_batch_broken_pipe_cancels_pending(monkeypatch):
+    # 下游管道关闭:重抛 BrokenPipeError 且排队任务被取消,不再翻译剩余队列
+    started: list[str] = []
+    release = threading.Event()
+
+    class _BrokenStdout:
+        def write(self, s):
+            raise BrokenPipeError
+
+        def flush(self):
+            pass
+
+    def fake(src_path, *, force, glossary, api_base, model, repair):
+        started.append(src_path)
+        if src_path != "f1.md":
+            release.wait(10)  # f2/f3 被取消则永不执行;未取消则阻塞于此
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(sys, "stdout", _BrokenStdout())
+    monkeypatch.setattr(translator, "translate_file", fake)
+    raised: dict = {}
+
+    def run():
+        try:
+            translator.run_batch(["f1.md", "f2.md", "f3.md"], force=False, glossary=[],
+                                 api_base="http://x", model="m", max_threads=1)
+        except BrokenPipeError:
+            raised["ok"] = True
+        finally:
+            release.set()
+
+    t = threading.Thread(target=run)
+    t.start()
+    t.join(10)
+    assert raised.get("ok"), "BrokenPipeError 未从 run_batch 重抛"
+    deadline = time.time() + 1  # 若未被取消,worker 会在宽限窗内启动 f2
+    while time.time() < deadline and len(started) == 1:
+        time.sleep(0.01)
+    assert started == ["f1.md"], "管道关闭后仍翻译剩余队列"
 ```
 
 注意:文件顶部需补充 `import os`(现仅 import io、sys);如已有则跳过。
@@ -395,9 +436,9 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
             else:
                 print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)
                 failed += 1
-    except KeyboardInterrupt:
-        # 取消未启动任务;不等待运行中请求(进程退出时由解释器 join 非守护 worker),
-        # 主线程立即返回,cli.main 打印「已中断」后以 130 退出
+    except BaseException:
+        # 任意基类异常(KeyboardInterrupt / 下游管道关闭等):取消未启动任务、
+        # 不等待运行中请求,主线程立即返回;cli.main 按类型映射 130/141
         executor.shutdown(wait=False, cancel_futures=True)
         raise
     executor.shutdown()
@@ -410,7 +451,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
 
 Run: `python -m pytest -v`
 
-Expected: 全部 PASS(135 + 8 = 143 项)。旧批量测试改走线程路径,断言仅用 `in` 匹配,不受输出乱序影响。
+Expected: 全部 PASS(135 + 9 = 144 项)。旧批量测试改走线程路径,断言仅用 `in` 匹配,不受输出乱序影响。
 
 - [ ] **Step 5: 提交**
 
@@ -550,7 +591,7 @@ def _warn(message: str) -> None:
 
 Run: `python -m pytest -v`
 
-Expected: 全部 PASS(143 + 3 = 146 项)。既有警告测试(`test_chunk_repair_warning_*`、`test_translate_file_warning_names_path` 等)断言消息文本不变,须原样通过。
+Expected: 全部 PASS(144 + 3 = 147 项)。既有警告测试(`test_chunk_repair_warning_*`、`test_translate_file_warning_names_path` 等)断言消息文本不变,须原样通过。
 
 - [ ] **Step 5: 提交**
 
@@ -638,7 +679,7 @@ md2zh --filelist list.txt -c 5
 - **批量多线程**:--filelist 用 ThreadPoolExecutor(默认 10,可 -c 调整)并行翻译,忽略命中前置不提交,完成即输出(乱序),计数与汇总在主线程聚合;线程内 stderr 警告经模块级锁串行化
 ```
 
-- 「Recent Updates」标题下插入 v0.4.0 条目(形式仿 v0.3.0 条目,内容:CLI 新增 -c/--max-threads,run_batch 线程池化、完成即输出、忽略前置、未知异常兜底、stderr 锁;测试数按 pytest 实际输出更新为 146);Overview 与「Development Workflow」中「129 项」同步为 146 项。
+- 「Recent Updates」标题下插入 v0.4.0 条目(形式仿 v0.3.0 条目,内容:CLI 新增 -c/--max-threads,run_batch 线程池化、完成即输出、忽略前置、未知异常兜底、stderr 锁;测试数按 pytest 实际输出更新为 148);Overview 与「Development Workflow」中「129 项」同步为 148 项。
 
 **docs/superpowers/specs/2026-10-12-md2zh-translator-design.md** §13 手工验证清单追加一条:
 
@@ -650,7 +691,7 @@ md2zh --filelist list.txt -c 5
 
 Run: `python -m pytest -v --junitxml=reports/junit.xml`
 
-Expected: 146/146 全部 PASS,`reports/junit.xml` 生成。
+Expected: 148/148 全部 PASS,`reports/junit.xml` 生成。
 
 - [ ] **Step 5: 提交**
 
@@ -667,4 +708,4 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 - **规格覆盖**:规格 §2 需求 1-7 分别由 Task 1(需求 1、2、6)、Task 2(需求 3、4、5)、Task 3(§4.3 互斥)、Task 4(需求 7)实现;§4.2 中断时序、§4.4 线程安全审计结论由 Task 2 代码与既有线程安全现状落实(审计为分析结论,无代码产物)。
 - **占位符扫描**:无 TBD/TODO;所有代码步骤含完整代码。
-- **类型一致性**:`run_batch` 签名(含 `max_threads: int = 10`)在 Task 1 与 Task 2 一致;`_warn(message: str) -> None` 在 Task 3 定义与测试一致;测试数预期 146 由逐任务累加计算。
+- **类型一致性**:`run_batch` 签名(含 `max_threads: int = 10`)在 Task 1 与 Task 2 一致;`_warn(message: str) -> None` 在 Task 3 定义与测试一致;测试数预期 148 由逐任务累加计算。
