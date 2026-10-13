@@ -250,6 +250,8 @@ def test_help_contains_max_threads(capsys):
     (["--api-base", "http://x/v1"], "--ollama 与 --api-base 不能同时使用"),
     (["--model", "m"], "--ollama 与 --model 不能同时使用"),
     (["-c", "2"], "--ollama 强制单线程"),
+    (["-c", "0"], "--ollama 强制单线程"),
+    (["-c", "-1"], "--ollama 强制单线程"),
 ])
 def test_ollama_conflicts_exit_64(extra, msg, capsys):
     # --ollama 与显式后端参数冲突,按用法错误退出 64

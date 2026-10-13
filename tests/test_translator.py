@@ -947,3 +947,24 @@ def test_run_batch_threads_ollama_to_translate_file(monkeypatch, capsys):
                                 max_threads=3, ollama=True) == translator.EX_OK
     assert calls == [True]
     assert capsys.readouterr().out == "a.md_zh\n"
+
+
+def test_ollama_threads_through_frontmatter_and_long_edges(monkeypatch, tmp_path):
+    # 边界透传守卫:frontmatter 与分段长文路径的每次 API 调用均携带 ollama=True;
+    # 正文须以空行分隔逻辑块才会切分(无空行的超长块按设计保持整块,不产生多段)
+    src = tmp_path / "A.md"
+    src.write_text("---\ntitle: Hello\n---\n" + "正文\n\n" * 1500, encoding="utf-8")
+    calls = []
+
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
+        calls.append(ollama)
+        return "译文"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
+    r = translator.translate_file(str(src), force=False, glossary=[],
+                                  api_base="http://x", model="m", ollama=True)
+    assert r.status == "ok"
+    # frontmatter 一次 + 正文两次分段(6000 字符 / 3000 段长)
+    assert len(calls) >= 3
+    assert all(flag is True for flag in calls)

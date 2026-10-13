@@ -13,7 +13,7 @@
 ## 2. 需求清单
 
 1. 新增 CLI 选项 `--ollama`:固定端点 `http://localhost:11434/v1` + 模型 `index-translate-9b:latest`,三种模式(单文件/stdin/filelist)均可用;
-2. `--ollama` 与显式 `--api-base` / 显式 `--model` / 显式 `-c N(N>1)` 冲突,经 `_Parser.error` 以 64 退出;`-c 1` 不冲突(与强制单线程一致);
+2. `--ollama` 与显式 `--api-base` / 显式 `--model` / 显式 `-c N(N≠1)` 冲突,经 `_Parser.error` 以 64 退出;`-c 1` 不冲突(与强制单线程一致);
 3. `--ollama` 时 `--filelist` 模式线程数锁定为 1(单文件/stdin 天然串行,不受影响);
 4. 请求差异仅两处:ollama 分支省略 `chat_template_kwargs`、不发送特殊 User-Agent(仅 B 站网关要求);`temperature=0.0`/`max_tokens`/`stream=True`/SSE 解析/`</think>` 剥离/重试×2/120s 超时两后端一致;
 5. ollama 服务未启动:现有重试耗尽 → `TranslateError` → 退出 75(EX_TEMPFAIL),stderr 报连接根因;
@@ -52,8 +52,8 @@ if args.ollama:
         parser.error("--ollama 与 --api-base 不能同时使用")
     if args.model is not None:
         parser.error("--ollama 与 --model 不能同时使用")
-    if args.max_threads is not None and args.max_threads > 1:
-        parser.error("--ollama 强制单线程,不能与 -c/--max-threads N(N>1) 同时使用")
+    if args.max_threads is not None and args.max_threads != 1:
+        parser.error("--ollama 强制单线程,-c/--max-threads 仅接受 1")
     args.api_base = api.OLLAMA_API_BASE
     args.model = api.OLLAMA_MODEL
     args.max_threads = 1
@@ -126,7 +126,7 @@ def translate_text(api_base: str, model: str, prompt: str, max_tokens: int,
 
 - **test_cli.py**:
   - `--ollama` 缺省解析:api_base=OLLAMA_API_BASE、model=OLLAMA_MODEL、max_threads=1;
-  - 三组冲突各自退出 64 且 stderr 含错误信息(`--ollama` + `--api-base` / + `--model` / + `-c 2`);`--ollama -c 1` 合法;
+  - 三组冲突各自退出 64 且 stderr 含错误信息(`--ollama` + `--api-base` / + `--model` / + `-c N(N≠1)`,参数化覆盖 `-c 2`/`-c 0`/`-c -1`);`--ollama -c 1` 合法;
   - 不带 `--ollama` 的默认值回归(api_base=DEFAULT_API_BASE、model=DEFAULT_MODEL、max_threads=10),显式传参仍生效;
   - 帮助文本含 `--ollama` 与示例。
 - **test_api.py**:

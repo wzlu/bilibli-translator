@@ -1,6 +1,6 @@
 # md2zh
 
-将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
+将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。亦支持本地 ollama 离线翻译(`--ollama`)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
 ![Version](https://img.shields.io/badge/version-0.5.0-brightgreen)

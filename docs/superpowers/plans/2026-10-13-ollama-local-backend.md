@@ -431,6 +431,8 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
     (["--api-base", "http://x/v1"], "--ollama 与 --api-base 不能同时使用"),
     (["--model", "m"], "--ollama 与 --model 不能同时使用"),
     (["-c", "2"], "--ollama 强制单线程"),
+    (["-c", "0"], "--ollama 强制单线程"),
+    (["-c", "-1"], "--ollama 强制单线程"),
 ])
 def test_ollama_conflicts_exit_64(extra, msg, capsys):
     # --ollama 与显式后端参数冲突,按用法错误退出 64
@@ -577,8 +579,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error("--ollama 与 --api-base 不能同时使用")
         if args.model is not None:
             parser.error("--ollama 与 --model 不能同时使用")
-        if args.max_threads is not None and args.max_threads > 1:
-            parser.error("--ollama 强制单线程,不能与 -c/--max-threads N(N>1) 同时使用")
+        if args.max_threads is not None and args.max_threads != 1:
+            parser.error("--ollama 强制单线程,-c/--max-threads 仅接受 1")
         args.api_base = api.OLLAMA_API_BASE
         args.model = api.OLLAMA_MODEL
         args.max_threads = 1
