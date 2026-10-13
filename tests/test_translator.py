@@ -55,7 +55,7 @@ def test_translate_file_preserves_code_block(monkeypatch, tmp_path):
     src = tmp_path / "ABC.md"
     src.write_text("前文\n```python\nprint(1)\n```\n后文", encoding="utf-8")
 
-    def fake(api_base, model, prompt, max_tokens):
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
         return "译文前\n@@@CODEBLOCK_0@@@\n译文后"
 
     monkeypatch.setattr(api, "translate_text", fake)
@@ -245,7 +245,7 @@ def test_oversized_chunk_budget_scaled(monkeypatch, tmp_path):
     monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
     budgets = []
 
-    def fake(api_base, model, prompt, max_tokens):
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
         budgets.append(max_tokens)
         return big_table.rstrip()  # 原样返回(API 层 strip 后的形态)
 
@@ -606,7 +606,7 @@ def test_run_batch_parallel_submits_all(monkeypatch, capsys):
     started: list[str] = []
     gate = threading.Event()
 
-    def fake(src_path, *, force, glossary, api_base, model, repair):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
         started.append(src_path)
         gate.wait()
         return translator.TranslateResult("ok", src_path + "_zh")
@@ -636,7 +636,7 @@ def test_run_batch_parallel_submits_all(monkeypatch, capsys):
 
 def test_run_batch_completed_first_printed_first(monkeypatch, capsys):
     # 慢文件先提交、快文件后提交:完成即输出,快文件路径先出现(乱序)
-    def fake(src_path, *, force, glossary, api_base, model, repair):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
         time.sleep(0.5 if src_path.endswith("slow.md") else 0.05)
         return translator.TranslateResult("ok", src_path + "_zh")
 
@@ -666,7 +666,7 @@ def test_run_batch_ignored_not_submitted(monkeypatch, tmp_path, capsys):
 
 def test_run_batch_unexpected_error_continues(monkeypatch, capsys):
     # 未知异常兜底:计入失败并继续处理其余文件
-    def fake(src_path, *, force, glossary, api_base, model, repair):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
         if src_path == "bad.md":
             raise RuntimeError("模拟未知回归")
         return translator.TranslateResult("ok", src_path + "_zh")
@@ -682,7 +682,7 @@ def test_run_batch_unexpected_error_continues(monkeypatch, capsys):
 
 def test_run_batch_keyboard_interrupt_reraises(monkeypatch):
     # 中断从 fut.result() 传出后经外层 shutdown 不等待关停并重新抛出
-    def fake(src_path, *, force, glossary, api_base, model, repair):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(translator, "translate_file", fake)
@@ -730,7 +730,7 @@ def test_run_batch_keyboard_interrupt_does_not_wait(monkeypatch):
     release = threading.Event()
     ki_raised = threading.Event()
 
-    def fake(src_path, *, force, glossary, api_base, model, repair):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
         if src_path == "first.md":
             # 等第二个任务进入运行态再抛 KI,消除取队竞态:确保中断时确有运行中任务
             task2_running.wait(5)
@@ -812,7 +812,7 @@ def test_run_batch_stderr_goes_through_warn(monkeypatch):
     def fake_warn(message):
         seen.append(message)
 
-    def fake_translate(src_path, *, force, glossary, api_base, model, repair):
+    def fake_translate(src_path, *, force, glossary, api_base, model, repair, ollama=False):
         return translator.TranslateResult("failed", "模拟失败", translator.EX_TEMPFAIL)
 
     monkeypatch.setattr(translator, "_warn", fake_warn)
@@ -838,7 +838,7 @@ def test_run_batch_stderr_routes_all_branches(monkeypatch, tmp_path):
     ti.write_text(str(p) + "\n", encoding="utf-8")
     matcher = ignore.load_ignore(str(ti))
 
-    def fake_translate(src_path, *, force, glossary, api_base, model, repair):
+    def fake_translate(src_path, *, force, glossary, api_base, model, repair, ollama=False):
         if src_path == "skip.md":
             return translator.TranslateResult("skipped", "译文已存在", 0)
         if src_path == "boom.md":
@@ -867,7 +867,7 @@ def test_run_batch_broken_pipe_cancels_pending(monkeypatch):
         def flush(self):
             pass
 
-    def fake(src_path, *, force, glossary, api_base, model, repair):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
         started.append(src_path)
         if src_path != "f1.md":
             release.wait(10)  # f2/f3 被取消则永不执行;未取消则阻塞于此
@@ -894,3 +894,56 @@ def test_run_batch_broken_pipe_cancels_pending(monkeypatch):
     while time.time() < deadline and len(started) == 1:
         time.sleep(0.01)
     assert started == ["f1.md"], "管道关闭后仍翻译剩余队列"
+
+
+def test_ollama_threads_to_translate_text(monkeypatch, tmp_path):
+    # ollama=True 沿 translate_file 全链路透传到 api.translate_text;缺省为 False
+    src = tmp_path / "A.md"
+    src.write_text("# Hi", encoding="utf-8")
+    calls = []
+
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
+        calls.append((api_base, model, ollama))
+        return "# 你好"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    r1 = translator.translate_file(str(src), force=False, glossary=[],
+                                   api_base="http://x", model="m", ollama=True)
+    assert r1.status == "ok"
+    assert calls[-1][2] is True
+    r2 = translator.translate_file(str(src), force=True, glossary=[],
+                                   api_base="http://x", model="m")
+    assert r2.status == "ok"
+    assert calls[-1][2] is False
+
+
+def test_run_stdin_ollama_threads(monkeypatch, capsys):
+    # stdin 模式透传 ollama 到 api.translate_text
+    calls = []
+    monkeypatch.setattr(sys, "stdin", _FakeStdin("# Hi".encode("utf-8")))
+
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
+        calls.append(ollama)
+        return "# 你好"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    assert translator.run_stdin(glossary=[], api_base="http://x", model="m",
+                                ollama=True) == translator.EX_OK
+    assert calls == [True]
+    assert capsys.readouterr().out == "# 你好\n"
+
+
+def test_run_batch_threads_ollama_to_translate_file(monkeypatch, capsys):
+    # run_batch 把 ollama 透传给 translate_file;线程池行为不受标志影响
+    calls = []
+
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+        calls.append(ollama)
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    assert translator.run_batch(["a.md"], force=False, glossary=[],
+                                api_base="http://x", model="m",
+                                max_threads=3, ollama=True) == translator.EX_OK
+    assert calls == [True]
+    assert capsys.readouterr().out == "a.md_zh\n"
