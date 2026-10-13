@@ -718,7 +718,7 @@ POST http://localhost:11434/v1/chat/completions
 - 强制单线程:本地 9B 模型多线程并发无收益(仅 `--filelist` 模式受影响,单文件/stdin 天然串行)。
 ```
 
-4. 「开发」节测试数 `148 项` → `159 项`(现第 144 行)。
+4. 「开发」节测试数 `148 项` → `164 项`(现第 144 行)。
 
 `CLAUDE.md`:
 - CLI 接口清单加一行:`--ollama       使用本地 ollama 翻译(端点 http://localhost:11434/v1,模型 index-translate-9b:latest,强制单线程;与显式 --api-base/--model/-c N≠1 冲突报错退出 64)`
@@ -728,7 +728,7 @@ POST http://localhost:11434/v1/chat/completions
 - [ ] **Step 5: 全量测试与报告**
 
 Run: `python -m pytest -v --junitxml=reports/junit.xml`
-Expected: 全部 PASS(148 + 新增 11 = **159** 项;新增明细:api 2、translator 3、cli 6)
+Expected: 全部 PASS(实际 164 项:148 + 新增 13 收集项——api 2、translator 3、cli 8(冲突测试参数化×3);终审修复波另加 3 项——守卫测试 1 + 冲突参数化 2)
 
 - [ ] **Step 6: 提交**
 
