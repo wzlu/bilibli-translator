@@ -427,7 +427,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `src/md2zh/translator.py:3-9`(import threading)、常量区之后(`_warn` 与 `_stderr_lock`)、`_repair` 内 3 处 `sys.stderr.write`(translator.py:142、144、146)
-- Test: `tests/test_translator.py`(末尾追加 1 个测试)
+- Test: `tests/test_translator.py`(末尾追加 3 个测试)
 
 **Interfaces:**
 - Consumes: 既有 `_repair(make_prompt, check, *, api_base, model, max_tokens, label, source, retries)`
@@ -442,6 +442,63 @@ def test_warn_writes_message(capsys):
     # _warn 串行化 stderr 写入;锁行为难以直接断言,此处钉住消息格式
     translator._warn("md2zh: 警告: 测试警告")
     assert "md2zh: 警告: 测试警告" in capsys.readouterr().err
+
+
+class _SplitWriter:
+    """把每次 write 拆两半并让出 GIL:无锁并发下必然交错,有锁则行完整。"""
+
+    def __init__(self):
+        self.buf = ""
+
+    def write(self, s):
+        half = len(s) // 2
+        self.buf += s[:half]
+        time.sleep(0.001)  # 让出 GIL,给另一线程交错窗口
+        self.buf += s[half:]
+        return len(s)
+
+    def flush(self):
+        pass
+
+
+def test_warn_serializes_concurrent_lines(monkeypatch):
+    # 两个线程并发 _warn:锁保证每行完整(守卫测试,钉住 _warn 串行化)
+    writer = _SplitWriter()
+    monkeypatch.setattr(sys, "stderr", writer)
+    msg_a = "md2zh: 警告: " + "A" * 200
+    msg_b = "md2zh: 警告: " + "B" * 200
+
+    def spam(msg):
+        for _ in range(100):
+            translator._warn(msg)
+
+    threads = [threading.Thread(target=spam, args=(m,)) for m in (msg_a, msg_b)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    for line in writer.buf.split("\n"):
+        if line:
+            assert line in (msg_a, msg_b), "并发 _warn 行间交错"
+
+
+def test_run_batch_stderr_goes_through_warn(monkeypatch):
+    # run_batch 主线程的 stderr 打印全部经 _warn 串行化(路由契约)
+    seen: list[str] = []
+
+    def fake_warn(message):
+        seen.append(message)
+
+    def fake_translate(src_path, *, force, glossary, api_base, model, repair):
+        return translator.TranslateResult("failed", "模拟失败", translator.EX_TEMPFAIL)
+
+    monkeypatch.setattr(translator, "_warn", fake_warn)
+    monkeypatch.setattr(translator, "translate_file", fake_translate)
+    rc = translator.run_batch(["a.md"], force=False, glossary=[],
+                              api_base="http://x", model="m")
+    assert rc == translator.EX_PARTIAL
+    assert any("失败 a.md" in m for m in seen)
+    assert any("汇总: 成功 0,跳过 0,忽略 0,失败 1" in m for m in seen)
 ```
 
 - [ ] **Step 2: 运行测试确认 RED**
@@ -481,11 +538,19 @@ def _warn(message: str) -> None:
         _warn(f"md2zh: 警告: {prefix}{label}校验失败,采用译文: {';'.join(problems)}")
 ```
 
+(4) `run_batch` 主线程的 5 处 stderr 打印改为 `_warn`(消息文本逐字不变,仅去掉 `file=sys.stderr`;stdout 的 `print(result.detail, flush=True)` 保持不变):
+
+- 忽略:`print(f"md2zh: 忽略 {p}: 命中忽略列表", file=sys.stderr)` → `_warn(f"md2zh: 忽略 {p}: 命中忽略列表")`
+- 兜底失败:`print(f"md2zh: 失败 {p}: {e}", file=sys.stderr)` → `_warn(f"md2zh: 失败 {p}: {e}")`
+- 跳过:`print(f"md2zh: 跳过 {p}: {result.detail}", file=sys.stderr)` → `_warn(f"md2zh: 跳过 {p}: {result.detail}")`
+- 失败:`print(f"md2zh: 失败 {p}: {result.detail}", file=sys.stderr)` → `_warn(f"md2zh: 失败 {p}: {result.detail}")`
+- 汇总:`print(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},忽略 {ignored},失败 {failed}", file=sys.stderr)` → `_warn(f"md2zh: 汇总: 成功 {ok},跳过 {skipped},忽略 {ignored},失败 {failed}")`
+
 - [ ] **Step 4: 运行测试确认 GREEN**
 
 Run: `python -m pytest -v`
 
-Expected: 全部 PASS(143 + 1 = 144 项)。既有警告测试(`test_chunk_repair_warning_*`、`test_translate_file_warning_names_path` 等)断言消息文本不变,须原样通过。
+Expected: 全部 PASS(143 + 3 = 146 项)。既有警告测试(`test_chunk_repair_warning_*`、`test_translate_file_warning_names_path` 等)断言消息文本不变,须原样通过。
 
 - [ ] **Step 5: 提交**
 
@@ -573,7 +638,7 @@ md2zh --filelist list.txt -c 5
 - **批量多线程**:--filelist 用 ThreadPoolExecutor(默认 10,可 -c 调整)并行翻译,忽略命中前置不提交,完成即输出(乱序),计数与汇总在主线程聚合;线程内 stderr 警告经模块级锁串行化
 ```
 
-- 「Recent Updates」标题下插入 v0.4.0 条目(形式仿 v0.3.0 条目,内容:CLI 新增 -c/--max-threads,run_batch 线程池化、完成即输出、忽略前置、未知异常兜底、stderr 锁;测试数按 pytest 实际输出更新为 144);Overview 与「Development Workflow」中「129 项」同步为 144 项。
+- 「Recent Updates」标题下插入 v0.4.0 条目(形式仿 v0.3.0 条目,内容:CLI 新增 -c/--max-threads,run_batch 线程池化、完成即输出、忽略前置、未知异常兜底、stderr 锁;测试数按 pytest 实际输出更新为 146);Overview 与「Development Workflow」中「129 项」同步为 146 项。
 
 **docs/superpowers/specs/2026-10-12-md2zh-translator-design.md** §13 手工验证清单追加一条:
 
@@ -585,7 +650,7 @@ md2zh --filelist list.txt -c 5
 
 Run: `python -m pytest -v --junitxml=reports/junit.xml`
 
-Expected: 144/144 全部 PASS,`reports/junit.xml` 生成。
+Expected: 146/146 全部 PASS,`reports/junit.xml` 生成。
 
 - [ ] **Step 5: 提交**
 
@@ -602,4 +667,4 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 - **规格覆盖**:规格 §2 需求 1-7 分别由 Task 1(需求 1、2、6)、Task 2(需求 3、4、5)、Task 3(§4.3 互斥)、Task 4(需求 7)实现;§4.2 中断时序、§4.4 线程安全审计结论由 Task 2 代码与既有线程安全现状落实(审计为分析结论,无代码产物)。
 - **占位符扫描**:无 TBD/TODO;所有代码步骤含完整代码。
-- **类型一致性**:`run_batch` 签名(含 `max_threads: int = 10`)在 Task 1 与 Task 2 一致;`_warn(message: str) -> None` 在 Task 3 定义与测试一致;测试数预期 144 由逐任务累加计算。
+- **类型一致性**:`run_batch` 签名(含 `max_threads: int = 10`)在 Task 1 与 Task 2 一致;`_warn(message: str) -> None` 在 Task 3 定义与测试一致;测试数预期 146 由逐任务累加计算。

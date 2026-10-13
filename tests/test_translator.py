@@ -764,3 +764,60 @@ def test_warn_writes_message(capsys):
     # _warn 串行化 stderr 写入;锁行为难以直接断言,此处钉住消息格式
     translator._warn("md2zh: 警告: 测试警告")
     assert "md2zh: 警告: 测试警告" in capsys.readouterr().err
+
+
+class _SplitWriter:
+    """把每次 write 拆两半并让出 GIL:无锁并发下必然交错,有锁则行完整。"""
+
+    def __init__(self):
+        self.buf = ""
+
+    def write(self, s):
+        half = len(s) // 2
+        self.buf += s[:half]
+        time.sleep(0.001)  # 让出 GIL,给另一线程交错窗口
+        self.buf += s[half:]
+        return len(s)
+
+    def flush(self):
+        pass
+
+
+def test_warn_serializes_concurrent_lines(monkeypatch):
+    # 两个线程并发 _warn:锁保证每行完整(守卫测试,钉住 _warn 串行化)
+    writer = _SplitWriter()
+    monkeypatch.setattr(sys, "stderr", writer)
+    msg_a = "md2zh: 警告: " + "A" * 200
+    msg_b = "md2zh: 警告: " + "B" * 200
+
+    def spam(msg):
+        for _ in range(100):
+            translator._warn(msg)
+
+    threads = [threading.Thread(target=spam, args=(m,)) for m in (msg_a, msg_b)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    for line in writer.buf.split("\n"):
+        if line:
+            assert line in (msg_a, msg_b), "并发 _warn 行间交错"
+
+
+def test_run_batch_stderr_goes_through_warn(monkeypatch):
+    # run_batch 主线程的 stderr 打印全部经 _warn 串行化(路由契约)
+    seen: list[str] = []
+
+    def fake_warn(message):
+        seen.append(message)
+
+    def fake_translate(src_path, *, force, glossary, api_base, model, repair):
+        return translator.TranslateResult("failed", "模拟失败", translator.EX_TEMPFAIL)
+
+    monkeypatch.setattr(translator, "_warn", fake_warn)
+    monkeypatch.setattr(translator, "translate_file", fake_translate)
+    rc = translator.run_batch(["a.md"], force=False, glossary=[],
+                              api_base="http://x", model="m")
+    assert rc == translator.EX_PARTIAL
+    assert any("失败 a.md" in m for m in seen)
+    assert any("汇总: 成功 0,跳过 0,忽略 0,失败 1" in m for m in seen)

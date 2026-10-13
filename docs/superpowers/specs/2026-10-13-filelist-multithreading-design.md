@@ -112,7 +112,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
 
 ### 4.3 stderr 写入互斥(translator.py)
 
-翻译线程内的重译警告(`_repair`、`_translate_chunk` 等)直接写 stderr,并发下可能行间交错。在 `translator.py` 增加模块级锁,线程内 stderr 打印统一包装:
+翻译线程内的重译警告(`_repair`、`_translate_chunk` 等)直接写 stderr,并发下可能行间交错。在 `translator.py` 增加模块级锁,stderr 打印统一包装:
 
 ```python
 _stderr_lock = threading.Lock()
@@ -123,7 +123,7 @@ def _warn(message: str) -> None:
         print(message, file=sys.stderr)
 ```
 
-线程内 stderr 打印点仅 `_repair` 的三条警告(重译/耗尽/采用译文),全部改用 `_warn`;`run_batch`/`run_single` 主线程打印保持原样(不加锁,主线程不与自己竞争)。锁竞争仅存在于批量并发时,单文件路径无额外开销。
+线程内 stderr 打印点仅 `_repair` 的三条警告(重译/耗尽/采用译文),全部改用 `_warn`;`run_batch` 主线程的 stderr 打印(忽略/跳过/失败/兜底/汇总)同样经 `_warn` 串行化,闭环主线程↔worker 的交错窗口;stdout 仅主线程写,不加锁;`run_single` 单线程路径直写 stderr 不变。锁竞争仅存在于批量并发时,单文件路径无额外开销。
 
 ### 4.4 线程安全审计
 
@@ -145,7 +145,8 @@ def _warn(message: str) -> None:
   - `max_threads=1`:行为与顺序版一致(回归对照);
   - 真实线程集成:mock `api.translate_text`,对 3-4 个临时 md 文件(放置 `temp/`)跑 `run_batch(max_threads=4)`,断言全部 `*_zh.md` 生成且内容正确;
   - 兜底:替身抛 `RuntimeError`,断言计入失败、其余文件继续处理、退出码 1;
-  - 中断路径:两任务替身,首个任务待第二个进入运行态后抛 `KeyboardInterrupt`,断言第二个任务仍在运行期间 `run_batch` 已重新抛出(不等待关停;worker 取队竞态经事件排序消除)。
+  - 中断路径:两任务替身,首个任务待第二个进入运行态后抛 `KeyboardInterrupt`,断言第二个任务仍在运行期间 `run_batch` 已重新抛出(不等待关停;worker 取队竞态经事件排序消除);
+  - stderr 互斥:`test_warn_writes_message` 钉住 `_warn` 消息格式;并发行完整守卫:`_SplitWriter` 把每次 write 拆两半并让出 GIL,两线程并发 `_warn` 后断言每行完整(钉住锁);路由契约:monkeypatch `_warn`,断言 `run_batch` 主线程 stderr 打印(忽略/跳过/失败/兜底/汇总)全部经 `_warn`。
 - **test_version.py**:版本号 0.4.0。
 
 ## 6. 文档与发布
