@@ -687,7 +687,7 @@ Expected: PASS
 ### 新增
 
 - `--ollama` 本地翻译后端:使用本地 ollama OpenAI 兼容端点(固定 http://localhost:11434/v1,模型 index-translate-9b:latest)离线翻译;请求省略 B 站特有的 `chat_template_kwargs` 与 User-Agent 要求;强制单线程
-- `--ollama` 与显式 `--api-base`/`--model`/`-c N(N>1)` 冲突报错,按用法错误退出 64(`-c 1` 合法)
+- `--ollama` 与显式 `--api-base`/`--model`/`-c N(N≠1)` 冲突报错,按用法错误退出 64(`-c 1` 合法)
 ```
 
 `README.md` 三处同步:
@@ -702,7 +702,7 @@ md2zh ABC.md --ollama
 2. 「行为约定」列表末尾(现第 89 行之后)追加:
 
 ```markdown
-- `--ollama` 使用本地 ollama 翻译(固定 `http://localhost:11434/v1`,模型 `index-translate-9b:latest`,强制单线程;与显式 `--api-base`/`--model`/`-c N(N>1)` 冲突按用法错误退出 64);
+- `--ollama` 使用本地 ollama 翻译(固定 `http://localhost:11434/v1`,模型 `index-translate-9b:latest`,强制单线程;与显式 `--api-base`/`--model`/`-c N(N≠1)` 冲突按用法错误退出 64);
 ```
 
 3. 「翻译 API 说明」节,在开头段(现第 130 行)之后追加:
@@ -721,7 +721,7 @@ POST http://localhost:11434/v1/chat/completions
 4. 「开发」节测试数 `148 项` → `159 项`(现第 144 行)。
 
 `CLAUDE.md`:
-- CLI 接口清单加一行:`--ollama       使用本地 ollama 翻译(端点 http://localhost:11434/v1,模型 index-translate-9b:latest,强制单线程;与显式 --api-base/--model/-c N>1 冲突报错退出 64)`
+- CLI 接口清单加一行:`--ollama       使用本地 ollama 翻译(端点 http://localhost:11434/v1,模型 index-translate-9b:latest,强制单线程;与显式 --api-base/--model/-c N≠1 冲突报错退出 64)`
 - 「核心设计决策」追加:`**本地 ollama 后端**:--ollama 经布尔标志贯穿(cli→translator→api),ollama 分支省略 chat_template_kwargs 与特殊 UA(仅 B 站网关 412 要求);强制单线程在 CLI 层完成(max_threads=1),translator 线程池逻辑不变`
 - 标题版本号 0.4.0 → 0.5.0,Recent Updates 增补 v0.5.0 条目(实施与真实 API 复验结果在实施完成后回填)
 

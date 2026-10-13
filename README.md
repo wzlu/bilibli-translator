@@ -90,7 +90,7 @@ cat ABC.md | md2zh -
 - 错误消息格式:`md2zh: 上下文: 信息`;用户可见错误不打印 Python 堆栈;
 - 输出编码 UTF-8;源文件须为 UTF-8(含 BOM 亦可),否则返回退出码 65;
 - `--filelist` 批量模式多线程并行(默认最多 10,可用 `-c N` 调整),译文路径完成即输出(顺序不定);
-- `--ollama` 使用本地 ollama 翻译(固定 `http://localhost:11434/v1`,模型 `index-translate-9b:latest`,强制单线程;与显式 `--api-base`/`--model`/`-c N(N>1)` 冲突按用法错误退出 64);
+- `--ollama` 使用本地 ollama 翻译(固定 `http://localhost:11434/v1`,模型 `index-translate-9b:latest`,强制单线程;与显式 `--api-base`/`--model`/`-c N(N≠1)` 冲突按用法错误退出 64);
 
 ## 退出码
 

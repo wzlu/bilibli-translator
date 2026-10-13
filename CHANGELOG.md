@@ -10,7 +10,7 @@
 ### 新增
 
 - `--ollama` 本地翻译后端:使用本地 ollama OpenAI 兼容端点(固定 http://localhost:11434/v1,模型 index-translate-9b:latest)离线翻译;请求省略 B 站特有的 `chat_template_kwargs` 与 User-Agent 要求;强制单线程
-- `--ollama` 与显式 `--api-base`/`--model`/`-c N(N>1)` 冲突报错,按用法错误退出 64(`-c 1` 合法)
+- `--ollama` 与显式 `--api-base`/`--model`/`-c N(N≠1)` 冲突报错,按用法错误退出 64(`-c 1` 合法)
 
 ## [0.4.0] - 2026-10-13
 
