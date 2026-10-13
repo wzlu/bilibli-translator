@@ -1,5 +1,10 @@
 import io
+import os
 import sys
+import threading
+import time
+
+import pytest
 
 from md2zh import api
 from md2zh import ignore
@@ -594,3 +599,126 @@ def test_run_stdin_default_no_repair_accepts(monkeypatch, capsys):
     cap = capsys.readouterr()
     assert cap.out == "坏译文\n"
     assert "md2zh: 警告: <stdin>: 块校验失败,采用译文" in cap.err
+
+
+def test_run_batch_parallel_submits_all(monkeypatch, capsys):
+    # 三个文件的门闩全部到达后才放行:证明并发提交(顺序版会卡在第一个门闩上)
+    started: list[str] = []
+    gate = threading.Event()
+
+    def fake(src_path, *, force, glossary, api_base, model, repair):
+        started.append(src_path)
+        gate.wait()
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    paths = ["f0.md", "f1.md", "f2.md"]
+    out: dict[str, int] = {}
+
+    def run():
+        out["rc"] = translator.run_batch(paths, force=False, glossary=[],
+                                         api_base="http://x", model="m", max_threads=3)
+
+    t = threading.Thread(target=run)
+    t.start()
+    try:
+        deadline = time.time() + 5
+        while len(started) < 3 and time.time() < deadline:
+            time.sleep(0.01)
+        assert len(started) == 3, "线程池未同时启动全部任务"
+    finally:
+        gate.set()  # 无论断言成败都放行,避免后台线程悬挂
+    t.join(10)
+    assert not t.is_alive()
+    assert out["rc"] == translator.EX_OK
+    assert set(capsys.readouterr().out.splitlines()) == {"f0.md_zh", "f1.md_zh", "f2.md_zh"}
+
+
+def test_run_batch_completed_first_printed_first(monkeypatch, capsys):
+    # 慢文件先提交、快文件后提交:完成即输出,快文件路径先出现(乱序)
+    def fake(src_path, *, force, glossary, api_base, model, repair):
+        time.sleep(0.5 if src_path.endswith("slow.md") else 0.05)
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    rc = translator.run_batch(["slow.md", "fast.md"], force=False, glossary=[],
+                              api_base="http://x", model="m", max_threads=2)
+    assert rc == translator.EX_OK
+    assert capsys.readouterr().out.splitlines() == ["fast.md_zh", "slow.md_zh"]
+
+
+def test_run_batch_ignored_not_submitted(monkeypatch, tmp_path, capsys):
+    # 忽略命中的文件不进入线程池(顺序版语义保留)
+    def fake(src_path, **k):
+        raise AssertionError(f"忽略文件不应提交翻译: {src_path}")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    p = tmp_path / "a.md"
+    p.write_text("# Hi", encoding="utf-8")
+    ti = tmp_path / ".translateignore"
+    ti.write_text(str(p) + "\n", encoding="utf-8")
+    matcher = ignore.load_ignore(str(ti))
+    rc = translator.run_batch([str(p)], force=False, glossary=[],
+                              api_base="http://x", model="m", ignore_matcher=matcher)
+    assert rc == translator.EX_OK
+    assert "汇总: 成功 0,跳过 0,忽略 1,失败 0" in capsys.readouterr().err
+
+
+def test_run_batch_unexpected_error_continues(monkeypatch, capsys):
+    # 未知异常兜底:计入失败并继续处理其余文件
+    def fake(src_path, *, force, glossary, api_base, model, repair):
+        if src_path == "bad.md":
+            raise RuntimeError("模拟未知回归")
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    rc = translator.run_batch(["bad.md", "good.md"], force=False, glossary=[],
+                              api_base="http://x", model="m", max_threads=2)
+    assert rc == translator.EX_PARTIAL
+    err = capsys.readouterr().err
+    assert "失败 bad.md" in err
+    assert "汇总: 成功 1,跳过 0,忽略 0,失败 1" in err
+
+
+def test_run_batch_keyboard_interrupt_reraises(monkeypatch):
+    # 中断从 fut.result() 传出后经外层 shutdown 不等待关停并重新抛出
+    def fake(src_path, *, force, glossary, api_base, model, repair):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    with pytest.raises(KeyboardInterrupt):
+        translator.run_batch(["a.md"], force=False, glossary=[],
+                             api_base="http://x", model="m", max_threads=1)
+
+
+def test_run_batch_max_threads_one_matches_sequential(monkeypatch, tmp_path, capsys):
+    # max_threads=1 与顺序版行为一致(回归对照)
+    good = tmp_path / "good.md"
+    good.write_text("# Hello", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    paths = [str(tmp_path / "missing.md"), str(good)]
+    rc = translator.run_batch(paths, force=False, glossary=[],
+                              api_base="http://x", model="m", max_threads=1)
+    assert rc == translator.EX_PARTIAL
+    captured = capsys.readouterr()
+    assert "成功 1" in captured.err
+    assert "失败 1" in captured.err
+    assert str(good)[:-3] + "_zh.md" in captured.out
+
+
+def test_run_batch_threads_write_zh_files(monkeypatch, tmp_path):
+    # 真实线程小规模集成:多线程并行写盘,全部译文生成且内容正确
+    files = []
+    for name in ("a.md", "b.md", "c.md"):
+        p = tmp_path / name
+        p.write_text("# Hi", encoding="utf-8")
+        files.append(str(p))
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    rc = translator.run_batch(files, force=False, glossary=[],
+                              api_base="http://x", model="m", max_threads=4)
+    assert rc == translator.EX_OK
+    for p in files:
+        zh = p[:-3] + "_zh.md"
+        assert os.path.exists(zh)
+        with open(zh, encoding="utf-8") as f:
+            assert "# 你好" in f.read()
