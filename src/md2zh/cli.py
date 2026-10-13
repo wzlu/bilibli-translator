@@ -38,11 +38,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help=f"模型(默认 {api.DEFAULT_MODEL})")
     parser.add_argument("--repair", type=int, choices=range(3), default=0,
                         help="校验失败后的重译次数 0-2(默认 0;失败一律采用译文,不回退原文)")
+    parser.add_argument("-c", "--max-threads", type=int, default=10, metavar="N",
+                        help="--filelist 模式最大并发线程数(默认 10;仅批量模式生效)")
     parser.add_argument("--version", action="version", version=f"md2zh {__version__}")
     parser.epilog = (
         "示例:\n"
         "  md2zh ABC.md                      翻译单个文件,生成 ABC_zh.md\n"
         "  md2zh --filelist list.txt         批量翻译(每行一个 md 文件)\n"
+        "  md2zh --filelist list.txt -c 5     批量翻译,最多 5 个线程并行(默认 10)\n"
         "  md2zh ABC.md --force              覆盖已存在的译文\n"
         "  md2zh ABC.md --glossary g.json    指定术语表\n"
         "  cat ABC.md | md2zh -              管道过滤器(stdin → stdout)\n"
@@ -53,6 +56,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("FILE 与 --filelist 不能同时使用")
     if not args.file and not args.filelist:
         parser.error("需要 FILE 或 --filelist 其中之一")
+    if args.max_threads < 1:
+        parser.error("-c/--max-threads 必须是正整数")
     return args
 
 
@@ -86,7 +91,8 @@ def main(argv: list[str] | None = None) -> int:
             matcher = ignore.load_ignore()  # 自动读取当前目录 .translateignore
             return translator.run_batch(paths, force=args.force, glossary=glossary,
                                         api_base=args.api_base, model=args.model,
-                                        ignore_matcher=matcher, repair=args.repair)
+                                        ignore_matcher=matcher, repair=args.repair,
+                                        max_threads=args.max_threads)
         return translator.run_single(args.file, force=args.force, glossary=glossary,
                                      api_base=args.api_base, model=args.model,
                                      repair=args.repair)

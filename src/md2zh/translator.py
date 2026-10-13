@@ -223,7 +223,8 @@ def run_single(path: str, *, force: bool, glossary: list[str],
 
 def run_batch(paths: list[str], *, force: bool, glossary: list[str],
               api_base: str, model: str, repair: int = 0,
-              ignore_matcher: ignore.IgnoreMatcher | None = None) -> int:
+              ignore_matcher: ignore.IgnoreMatcher | None = None,
+              max_threads: int = 10) -> int:
     """批量模式:继续处理所有文件,最后汇总;存在失败返回 EX_PARTIAL。
 
     忽略列表命中优先于扩展名与存在性检查,且不受 --force 影响。

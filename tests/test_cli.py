@@ -5,6 +5,7 @@ import pytest
 
 from md2zh import api
 from md2zh import cli
+from md2zh import ignore
 from md2zh import translator
 
 
@@ -198,3 +199,65 @@ def test_repair_threads_to_translator(monkeypatch, tmp_path, capsys):
     calls["n"] = 0
     assert cli.main(["--force", str(src)]) == translator.EX_OK
     assert calls["n"] == 1
+
+
+def test_max_threads_default_10(monkeypatch, tmp_path):
+    # 缺省 -c 10 透传到 run_batch
+    seen: dict = {}
+
+    def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
+                       ignore_matcher, max_threads):
+        seen["max_threads"] = max_threads
+        return translator.EX_OK
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+    monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
+    monkeypatch.setattr(translator, "run_batch", fake_run_batch)
+    monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
+    assert cli.main(["--filelist", "l.txt"]) == translator.EX_OK
+    assert seen["max_threads"] == 10
+
+
+def test_max_threads_flag_passthrough(monkeypatch, tmp_path):
+    # -c 5 透传到 run_batch
+    seen: dict = {}
+
+    def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
+                       ignore_matcher, max_threads):
+        seen["max_threads"] = max_threads
+        return translator.EX_OK
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+    monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
+    monkeypatch.setattr(translator, "run_batch", fake_run_batch)
+    monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
+    assert cli.main(["--filelist", "l.txt", "-c", "5"]) == translator.EX_OK
+    assert seen["max_threads"] == 5
+
+
+@pytest.mark.parametrize("bad", ["0", "-1"])
+def test_max_threads_invalid_exits_64(bad, capsys):
+    # 非正整数按用法错误退出 64
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--filelist", "l.txt", "-c", bad])
+    assert e.value.code == translator.EX_USAGE
+    assert "-c/--max-threads 必须是正整数" in capsys.readouterr().err
+
+
+def test_max_threads_ignored_in_single_file_mode(monkeypatch, tmp_path):
+    # 单文件模式下 -c 被接受且不影响行为(静默忽略)
+    src = tmp_path / "A.md"
+    src.write_text("# Hi", encoding="utf-8")
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    assert cli.main([str(src), "-c", "5"]) == translator.EX_OK
+    assert (tmp_path / "A_zh.md").exists()
+
+
+def test_help_contains_max_threads(capsys):
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--help"])
+    assert e.value.code == 0
+    assert "-c N, --max-threads N" in capsys.readouterr().out
