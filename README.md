@@ -3,8 +3,8 @@
 将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
-![Version](https://img.shields.io/badge/version-0.4.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-148%20passed-brightgreen)
+![Version](https://img.shields.io/badge/version-0.5.0-brightgreen)
+![Tests](https://img.shields.io/badge/tests-161%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -70,6 +70,9 @@ md2zh ABC.md --glossary g.json
 # 校验失败时自动重译至多 2 次(默认不重译、直接采用译文)
 md2zh ABC.md --repair 2
 
+# 使用本地 ollama 离线翻译(强制单线程)
+md2zh ABC.md --ollama
+
 # 管道过滤器:stdin 读入,译文写 stdout
 cat ABC.md | md2zh -
 ```
@@ -87,6 +90,7 @@ cat ABC.md | md2zh -
 - 错误消息格式:`md2zh: 上下文: 信息`;用户可见错误不打印 Python 堆栈;
 - 输出编码 UTF-8;源文件须为 UTF-8(含 BOM 亦可),否则返回退出码 65;
 - `--filelist` 批量模式多线程并行(默认最多 10,可用 `-c N` 调整),译文路径完成即输出(顺序不定);
+- `--ollama` 使用本地 ollama 翻译(固定 `http://localhost:11434/v1`,模型 `index-translate-9b:latest`,强制单线程;与显式 `--api-base`/`--model`/`-c N(N>1)` 冲突按用法错误退出 64);
 
 ## 退出码
 
@@ -138,10 +142,19 @@ POST https://index-translate.bilibili.com/v1/chat/completions
 - 网络错误自动重试 2 次,耗尽报退出码 75;
 - 完整协议参考 `references/call_api.py`(支持图片翻译、本地代理等更多能力,本工具未复制)。
 
+`--ollama` 模式下改用本地 ollama 的 OpenAI 兼容端点(需本机已运行 ollama 且已拉取 `index-translate-9b:latest`):
+
+```
+POST http://localhost:11434/v1/chat/completions
+```
+
+- 请求省略 B 站特有的 `chat_template_kwargs` 与 User-Agent 要求;
+- 强制单线程:本地 9B 模型多线程并发无收益(仅 `--filelist` 模式受影响,单文件/stdin 天然串行)。
+
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(148 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(161 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -163,7 +176,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ├── README.md / CHANGELOG.md / LICENSE / CLAUDE.md / pyproject.toml
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
 │                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
-├── tests/              # 148 项测试,API 全 mock
+├── tests/              # 161 项测试,API 全 mock
 ├── data/sample_en.md   # 手工验证样例
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)

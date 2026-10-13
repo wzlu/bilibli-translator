@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "md2zh"
-version = "0.4.0"
+version = "0.5.0"
 description = "将英文 Markdown 文件翻译为中文的命令行工具"
 requires-python = ">=3.10"
 dependencies = ["requests>=2.31"]

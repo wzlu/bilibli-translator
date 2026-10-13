@@ -5,6 +5,13 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-10-13
+
+### 新增
+
+- `--ollama` 本地翻译后端:使用本地 ollama OpenAI 兼容端点(固定 http://localhost:11434/v1,模型 index-translate-9b:latest)离线翻译;请求省略 B 站特有的 `chat_template_kwargs` 与 User-Agent 要求;强制单线程
+- `--ollama` 与显式 `--api-base`/`--model`/`-c N(N>1)` 冲突报错,按用法错误退出 64(`-c 1` 合法)
+
 ## [0.4.0] - 2026-10-13
 
 ### 新增
@@ -121,7 +128,8 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.5.0
 [0.4.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.4.0
 [0.3.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.3.0
 [0.2.5]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.2.5
