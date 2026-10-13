@@ -197,3 +197,38 @@ def test_translate_text_skips_non_dict_chunk(monkeypatch):
 
     monkeypatch.setattr(api.requests, "post", fake_post)
     assert api.translate_text("http://x/v1", "m", "p", 1024) == "好"
+
+
+def test_translate_text_ollama_omits_bilibili_specifics(monkeypatch):
+    # ollama 分支:payload 不带 chat_template_kwargs,不发送特殊 User-Agent
+    calls = {}
+
+    def fake_post(url, json, timeout, stream, headers=None):
+        calls["payload"] = json
+        calls["headers"] = headers
+        return _FakeResponse([_sse("你"), _sse("好"), "data: [DONE]"])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    result = api.translate_text("http://localhost:11434/v1",
+                                "index-translate-9b:latest", "提示词", 1024,
+                                ollama=True)
+    assert result == "你好"
+    assert "chat_template_kwargs" not in calls["payload"]
+    assert calls["payload"]["stream"] is True
+    assert calls["headers"] == {}
+
+
+def test_translate_text_ollama_retries_and_strips_think(monkeypatch):
+    # ollama 分支沿用重试与 </think> 剥离:首次连接失败,第二次成功并剥离
+    count = {"n": 0}
+
+    def fake_post(url, json, timeout, stream, headers=None):
+        count["n"] += 1
+        if count["n"] == 1:
+            raise requests.ConnectionError("连接被拒绝")
+        return _FakeResponse([_sse("<think>思考</think>译文"), "data: [DONE]"])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    assert api.translate_text("http://localhost:11434/v1", "m", "p", 1024,
+                              ollama=True) == "译文"
+    assert count["n"] == 2

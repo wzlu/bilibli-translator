@@ -8,6 +8,8 @@ import requests
 
 DEFAULT_API_BASE = "https://index-translate.bilibili.com/v1"
 DEFAULT_MODEL = "Index-Translate-35B-A3B"
+OLLAMA_API_BASE = "http://localhost:11434/v1"
+OLLAMA_MODEL = "index-translate-9b:latest"
 DEFAULT_GLOSSARY = os.path.join(os.path.expanduser("~"), ".config", "md2zh", "glossary.json")
 
 RETRY_TIMES = 2
@@ -106,10 +108,13 @@ def build_frontmatter_prompt(text: str, glossary: list[str], fix_notes: str = ""
     )
 
 
-def translate_text(api_base: str, model: str, prompt: str, max_tokens: int) -> str:
+def translate_text(api_base: str, model: str, prompt: str, max_tokens: int,
+                   ollama: bool = False) -> str:
     """流式调用 chat/completions,失败自动重试,重试耗尽抛 TranslateError。
 
     采用流式请求规避非流式长文本的网关 504 超时(见 references/call_api.py)。
+    ollama=True 走本地 OpenAI 兼容端点:省略 B 站特有的 chat_template_kwargs,
+    网关 412 的 User-Agent 要求不适用。
     """
     url = f"{api_base.rstrip('/')}/chat/completions"
     payload = {
@@ -118,10 +123,12 @@ def translate_text(api_base: str, model: str, prompt: str, max_tokens: int) -> s
         "temperature": 0.0,
         "max_tokens": max_tokens,
         "stream": True,
-        "chat_template_kwargs": {"enable_thinking": False},
     }
-    # 网关要求非默认 User-Agent,否则返回 412(见 references/call_api.py)
-    headers = {"User-Agent": "Index-Translate-Client/1.0"}
+    if not ollama:
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+    # B 站网关要求非默认 User-Agent,否则返回 412(见 references/call_api.py);
+    # 本地 ollama 无此要求,空 dict 让 requests 使用默认 UA
+    headers = {"User-Agent": "Index-Translate-Client/1.0"} if not ollama else {}
     last_error: Exception | None = None
     for _ in range(RETRY_TIMES + 1):
         try:
