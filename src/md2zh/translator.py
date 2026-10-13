@@ -3,6 +3,7 @@
 import os
 import sys
 import tempfile
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
@@ -25,6 +26,14 @@ CHUNK_SIZE = 3000
 CONTEXT_TAIL = 800          # 分段时附前段上下文参考的字符数
 MAX_TOKENS_SINGLE = 8192
 MAX_TOKENS_CHUNK = 4096
+
+_stderr_lock = threading.Lock()
+
+
+def _warn(message: str) -> None:
+    """stderr 警告串行化:批量多线程下避免行间交错。"""
+    with _stderr_lock:
+        print(message, file=sys.stderr)
 
 
 @dataclass
@@ -140,11 +149,11 @@ def _repair(make_prompt, check, *, api_base: str, model: str,
         if not problems:
             return dst
         if attempt < retries:
-            sys.stderr.write(f"md2zh: 警告: {prefix}{label}校验失败,重译({attempt + 1}/{retries}): {';'.join(problems)}\n")
+            _warn(f"md2zh: 警告: {prefix}{label}校验失败,重译({attempt + 1}/{retries}): {';'.join(problems)}")
     if retries:
-        sys.stderr.write(f"md2zh: 警告: {prefix}{label}重译耗尽,采用译文: {';'.join(problems)}\n")
+        _warn(f"md2zh: 警告: {prefix}{label}重译耗尽,采用译文: {';'.join(problems)}")
     else:
-        sys.stderr.write(f"md2zh: 警告: {prefix}{label}校验失败,采用译文: {';'.join(problems)}\n")
+        _warn(f"md2zh: 警告: {prefix}{label}校验失败,采用译文: {';'.join(problems)}")
     return dst
 
 

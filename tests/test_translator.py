@@ -758,3 +758,9 @@ def test_run_batch_keyboard_interrupt_does_not_wait(monkeypatch):
         release.set()
     t.join(10)
     assert not t.is_alive()
+
+
+def test_warn_writes_message(capsys):
+    # _warn 串行化 stderr 写入;锁行为难以直接断言,此处钉住消息格式
+    translator._warn("md2zh: 警告: 测试警告")
+    assert "md2zh: 警告: 测试警告" in capsys.readouterr().err
