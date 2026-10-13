@@ -7,3 +7,5 @@ dist/
 build/
 .superpowers/
 .translateignore
+untranslated_*.txt
+data/*_zh.md
