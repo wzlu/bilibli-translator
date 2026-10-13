@@ -95,7 +95,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 ## Recent Updates (Updated: 2026-10-13)
 
-v0.5.0 `--ollama` 本地后端:dfd1e91..77f02a9 共 10 个提交(规格 + 计划 + 任务 1-4 实施 + 终审修复波与口径同步),164/164 测试通过。新增 `--ollama`:改用本地 ollama 的 OpenAI 兼容端点(`http://localhost:11434/v1`,模型 `index-translate-9b:latest`)离线翻译,api 层按标志省略 B 站特有的 `chat_template_kwargs` 与 User-Agent 要求;`ollama` 布尔标志经 cli→translator→api 贯穿(translator 线程池逻辑不变);cli 层冲突检测:与显式 `--api-base`/`--model`/`-c N(N≠1)` 冲突报错退出 64(`-c 1` 合法),并在 CLI 层强制单线程(`max_threads=1`)。终审修复波:边界透传守卫测试(frontmatter+分段长文)、`-c N≠1` 冲突语义(用户裁决)、文档回填与 .gitignore 真实 API 产物忽略。已 fast-forward 合并回 main,待推送 origin 与打 tag。真实 ollama 手工验证:规格 §6 第 1/2/4/6 项已实测通过(单文件 34s、stdin 17s、三组冲突均退出 64、无 @@@ 与 </think> 残留);第 3/5 项与长文超时余量待发布波执行,结果回填本节。
+v0.5.0 `--ollama` 本地后端:dfd1e91..77f02a9 共 10 个提交(规格 + 计划 + 任务 1-4 实施 + 终审修复波与口径同步),164/164 测试通过。新增 `--ollama`:改用本地 ollama 的 OpenAI 兼容端点(`http://localhost:11434/v1`,模型 `index-translate-9b:latest`)离线翻译,api 层按标志省略 B 站特有的 `chat_template_kwargs` 与 User-Agent 要求;`ollama` 布尔标志经 cli→translator→api 贯穿(translator 线程池逻辑不变);cli 层冲突检测:与显式 `--api-base`/`--model`/`-c N(N≠1)` 冲突报错退出 64(`-c 1` 合法),并在 CLI 层强制单线程(`max_threads=1`)。终审修复波:边界透传守卫测试(frontmatter+分段长文)、`-c N≠1` 冲突语义(用户裁决)、文档回填与 .gitignore 真实 API 产物忽略。已 fast-forward 合并回 main,已推送 origin 并打 tag v0.5.0。真实 ollama 手工验证:规格 §6 第 1/2/4/6 项已实测通过(单文件 34s、stdin 17s、三组冲突均退出 64、无 @@@ 与 </think> 残留);第 3/5 项与长文超时余量待发布波执行,结果回填本节。
 
 v0.4.0 filelist 批量多线程:bbbc777..b48ec5b 共 10 个提交(设计/计划 + 任务 1-4 实施与审查修复),本提交为文档同步;148/148 测试通过。新增 `-c N, --max-threads N`(默认 10,仅批量模式生效);`run_batch` 改 ThreadPoolExecutor 并行:忽略命中前置不提交、译文路径完成即输出(乱序)、未知异常兜底计失败;批量 stderr(线程内与主线程)统一经模块级锁 `_warn` 串行化;终审修复:任意基类异常(KeyboardInterrupt/下游管道关闭)取消未启动任务后重抛——此前管道关闭时 run_batch 未关停线程池,atexit 哨兵排在任务队列尾部,进程退出前会译完整批剩余文件,现已闭环并由 broken_pipe 测试锁定。汇总与退出码契约不变;已 fast-forward 合并回 main 并推送 origin,已打 tag v0.4.0。真实 API 复验(opencode 130 文件,`-c 5`):成功 117、跳过 13、失败 0,完成即输出(乱序)与 stderr 无行间交错;3 块「占位符丢失」警告(2.6%,不回退语义既定取舍)。
 
@@ -129,4 +129,4 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - v0.5.0 已知限制(终审观察项随行发布):本地 ollama 模型 thinking 输出会消耗 max_tokens 预算(超长输出可能被静默截断,finish_reason 未检测);120s 超时对本地慢速推理余量有限;代理环境下 localhost 请求未豁免 HTTP_PROXY(如需直连需自行设置 no_proxy)。均为本地后端边缘行为,损害有界
 - 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
-- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main;v0.5.0 已 fast-forward 合并回本地 main 待推送,最新 tag 仍为 v0.4.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
+- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.5.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
