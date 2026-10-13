@@ -201,8 +201,9 @@ def test_repair_threads_to_translator(monkeypatch, tmp_path, capsys):
     assert calls["n"] == 1
 
 
-def test_max_threads_default_10(monkeypatch, tmp_path):
-    # 缺省 -c 10 透传到 run_batch
+@pytest.mark.parametrize("argv, expected", [([], 10), (["-c", "5"], 5)])
+def test_max_threads_passthrough(monkeypatch, tmp_path, argv, expected):
+    # -c 透传到 run_batch:缺省 10,显式 5
     seen: dict = {}
 
     def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
@@ -215,26 +216,8 @@ def test_max_threads_default_10(monkeypatch, tmp_path):
     monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
     monkeypatch.setattr(translator, "run_batch", fake_run_batch)
     monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
-    assert cli.main(["--filelist", "l.txt"]) == translator.EX_OK
-    assert seen["max_threads"] == 10
-
-
-def test_max_threads_flag_passthrough(monkeypatch, tmp_path):
-    # -c 5 透传到 run_batch
-    seen: dict = {}
-
-    def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
-                       ignore_matcher, max_threads):
-        seen["max_threads"] = max_threads
-        return translator.EX_OK
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
-    monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
-    monkeypatch.setattr(translator, "run_batch", fake_run_batch)
-    monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
-    assert cli.main(["--filelist", "l.txt", "-c", "5"]) == translator.EX_OK
-    assert seen["max_threads"] == 5
+    assert cli.main(["--filelist", "l.txt", *argv]) == translator.EX_OK
+    assert seen["max_threads"] == expected
 
 
 @pytest.mark.parametrize("bad", ["0", "-1"])

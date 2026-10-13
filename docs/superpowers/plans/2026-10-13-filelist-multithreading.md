@@ -42,8 +42,9 @@
 在 `tests/test_cli.py` 末尾追加:
 
 ```python
-def test_max_threads_default_10(monkeypatch, tmp_path):
-    # 缺省 -c 10 透传到 run_batch
+@pytest.mark.parametrize("argv, expected", [([], 10), (["-c", "5"], 5)])
+def test_max_threads_passthrough(monkeypatch, tmp_path, argv, expected):
+    # -c 透传到 run_batch:缺省 10,显式 5
     seen: dict = {}
 
     def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
@@ -56,26 +57,8 @@ def test_max_threads_default_10(monkeypatch, tmp_path):
     monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
     monkeypatch.setattr(translator, "run_batch", fake_run_batch)
     monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
-    assert cli.main(["--filelist", "l.txt"]) == translator.EX_OK
-    assert seen["max_threads"] == 10
-
-
-def test_max_threads_flag_passthrough(monkeypatch, tmp_path):
-    # -c 5 透传到 run_batch
-    seen: dict = {}
-
-    def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
-                       ignore_matcher, max_threads):
-        seen["max_threads"] = max_threads
-        return translator.EX_OK
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
-    monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
-    monkeypatch.setattr(translator, "run_batch", fake_run_batch)
-    monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
-    assert cli.main(["--filelist", "l.txt", "-c", "5"]) == translator.EX_OK
-    assert seen["max_threads"] == 5
+    assert cli.main(["--filelist", "l.txt", *argv]) == translator.EX_OK
+    assert seen["max_threads"] == expected
 
 
 @pytest.mark.parametrize("bad", ["0", "-1"])
@@ -108,7 +91,7 @@ def test_help_contains_max_threads(capsys):
 
 Run: `python -m pytest tests/test_cli.py -k max_threads -v`
 
-Expected: FAIL——`test_max_threads_default_10`/`test_max_threads_flag_passthrough` 报 `TypeError: fake_run_batch() missing 1 required keyword-only argument: 'max_threads'`;`test_max_threads_invalid_exits_64` 报 `SystemExit`(未知选项 -c,`assert e.value.code == translator.EX_USAGE` 通过但错误消息断言失败);`test_max_threads_ignored_in_single_file_mode` 抛 `SystemExit`(未知选项);`test_help_contains_max_threads` 断言失败(帮助无此选项)。
+Expected: FAIL——`test_max_threads_passthrough`(2 项)报 `TypeError: fake_run_batch() missing 1 required keyword-only argument: 'max_threads'`;`test_max_threads_invalid_exits_64` 报 `SystemExit`(未知选项 -c,`assert e.value.code == translator.EX_USAGE` 通过但错误消息断言失败);`test_max_threads_ignored_in_single_file_mode` 抛 `SystemExit`(未知选项);`test_help_contains_max_threads` 断言失败(帮助无此选项)。
 
 - [ ] **Step 3: 最小实现**
 
