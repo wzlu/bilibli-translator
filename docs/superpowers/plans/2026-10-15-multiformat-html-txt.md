@@ -765,7 +765,10 @@ def test_get_format_html_entry():
 
 def test_get_format_txt_entry():
     fmt = formats.get_format("txt")
+    assert fmt.split_frontmatter is txt.split_frontmatter
     assert fmt.protect is txt.protect
+    assert fmt.restore is txt.restore
+    assert fmt.chunk_text is txt.chunk_text
     assert fmt.validators == (checks.check_placeholders,)
     assert fmt.constraints == txt.CONSTRAINTS
 
@@ -1040,10 +1043,9 @@ def build_prompt(text: str, glossary: list[str], fix_notes: str = "", context: s
     """构建翻译提示词:【源文】+【约束要求】(格式约束+术语表+修复说明)。
 
     constraints 缺省回落 markdown.CONSTRAINTS(保持既有默认行为);
-    各格式经 formats 注册表传入自己的约束文本。
+    各格式经 formats 注册表传入自己的约束文本;先复制防原地污染调用方列表。
     """
-    if constraints is None:
-        constraints = list(markdown.CONSTRAINTS)
+    constraints = list(constraints) if constraints is not None else list(markdown.CONSTRAINTS)
     _append_requirements(constraints, glossary, fix_notes)
     # 其余逻辑不变(上下文隔离约束、提示词装配)
 ```
@@ -1437,7 +1439,7 @@ def _prog() -> str:
         "  {prog} ABC.md                      翻译单个 Markdown 文件,生成 ABC_zh.md\n"
         "  {prog} page.html                  翻译 HTML 文件(格式按扩展名推断)\n"
         "  {prog} note.txt                   翻译纯文本文件(格式按扩展名推断)\n"
-        "  txt2zh note.txt                  txt2zh 别名(等价 {prog} --format txt)\n"
+        "  txt2zh note.txt                  txt2zh 别名(同一入口,格式按扩展名/--format 决定)\n"
         "  {prog} --filelist list.txt        批量翻译(每行一个文件,# 开头忽略)\n"
         "  {prog} --filelist list.txt -c 5    批量翻译,最多 5 个线程并行(默认 10)\n"
         "  {prog} ABC.md --force              覆盖已存在的译文\n"
