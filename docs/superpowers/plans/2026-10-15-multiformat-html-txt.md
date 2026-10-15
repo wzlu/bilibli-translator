@@ -973,9 +973,19 @@ def test_translate_long_uses_format_chunk(monkeypatch):
                                         mapping=mapping, fmt=html_fmt)
     assert html_fmt.restore(result, mapping) == text
     assert calls["n"] > 1
+
+
+def test_chunk_leading_whitespace_preserved(monkeypatch):
+    # 块首空白与块尾空白对称回挂:html 令牌边界分段下块首空白不得被 API strip 吃掉
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "译文")
+    result = translator._translate_chunk("  word ", [], "http://x", "m", 4096,
+                                         fmt=formats.get_format("html"))
+    assert result == "  译文 "
 ```
 
-4. 修正 `test_long_context_restores_placeholders` 中两行(现 497、502 行):
+4. 九处 run_batch 严格签名替身(:609/:639/:669/:685/:733/:870/:940 的 `fake` 与 :815/:841 的 `fake_translate`)机械追加 `, fmt=None` 形参(断言不动;与 v0.5.0 ollama 计划同款先例,否则 submit 传 fmt 时 TypeError)。
+
+5. 修正 `test_long_context_restores_placeholders` 中两行(现 497、502 行):
 
 ```python
     protected, mapping = markdown.protect_code_blocks(text)
@@ -1128,7 +1138,15 @@ def _check_block(src: str, dst: str, fmt: formats.Format | None = None) -> list[
     return problems
 ```
 
-5. `_translate_chunk`(现 166-177 行):关键字参增 `fmt: formats.Format | None = None`,函数体加回落与分派:
+5. `_trailing_whitespace`(现 135-137 行)旁新增对称辅助(html 令牌边界分段使块首空白可达,既有管线会经 prompt/API 的 strip 丢失块首空白——实施子代理实测发现):
+
+```python
+def _leading_whitespace(text: str) -> str:
+    """返回文本开头的空白串(回挂译文以保持分段边界与文件开头布局)。"""
+    return text[:len(text) - len(text.lstrip())]
+```
+
+6. `_translate_chunk`(现 166-177 行):关键字参增 `fmt: formats.Format | None = None`,函数体加回落与分派:
 
 ```python
 def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
@@ -1146,11 +1164,11 @@ def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
         api_base=api_base, model=model, max_tokens=max_tokens, label="块",
         source=source, retries=repair, ollama=ollama,
     )
-    # 译文经 API strip,回挂源块尾随空白,保持分段边界与文件末尾布局
-    return dst + _trailing_whitespace(src)
+    # 译文经 API strip,回挂源块首尾空白,保持分段边界与文件布局
+    return _leading_whitespace(src) + dst + _trailing_whitespace(src)
 ```
 
-6. `_translate_long`(现 180-203 行):关键字参增 `fmt`,函数体改派:
+7. `_translate_long`(现 180-203 行):关键字参增 `fmt`,函数体改派:
 
 ```python
 def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
@@ -1182,7 +1200,7 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
     return "".join(parts)
 ```
 
-7. `run_single`(现 227-241 行)签名与调用增 `fmt`:
+8. `run_single`(现 227-241 行)签名与调用增 `fmt`:
 
 ```python
 def run_single(path: str, *, force: bool, glossary: list[str],
@@ -1194,7 +1212,7 @@ def run_single(path: str, *, force: bool, glossary: list[str],
                             ollama=ollama, fmt=fmt)
 ```
 
-8. `run_batch`(现 244-293 行)签名增 `fmt: str | None = None`,提交线程池时透传:
+9. `run_batch`(现 244-293 行)签名增 `fmt: str | None = None`,提交线程池时透传:
 
 ```python
 def run_batch(paths: list[str], *, force: bool, glossary: list[str],
@@ -1214,7 +1232,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
                    for p in todo}
 ```
 
-9. `run_stdin`(现 296-322 行)签名增 `fmt: str = "md"`,传入 `_translate_document`:
+10. `run_stdin`(现 296-322 行)签名增 `fmt: str = "md"`,传入 `_translate_document`:
 
 ```python
 def run_stdin(*, glossary: list[str], api_base: str, model: str, repair: int = 0,
