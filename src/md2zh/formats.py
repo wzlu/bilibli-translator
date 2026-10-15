@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Callable
 
-from md2zh import checks, markdown
+from md2zh import checks, html, markdown, txt
 
 Validator = Callable[[str, str], list[str]]
 
@@ -32,6 +32,26 @@ FORMATS: dict[str, Format] = {
         chunk_text=markdown.chunk_text,
         validators=(checks.check_links, checks.check_tables, checks.check_placeholders),
         constraints=markdown.CONSTRAINTS,
+    ),
+    "html": Format(
+        name="html",
+        extensions=(".html", ".htm"),
+        split_frontmatter=html.split_frontmatter,
+        protect=html.protect,
+        restore=html.restore,
+        chunk_text=html.chunk_text,
+        validators=(checks.check_placeholders, checks.check_html_text),
+        constraints=html.CONSTRAINTS,
+    ),
+    "txt": Format(
+        name="txt",
+        extensions=(".txt",),
+        split_frontmatter=txt.split_frontmatter,
+        protect=txt.protect,
+        restore=txt.restore,
+        chunk_text=txt.chunk_text,
+        validators=(checks.check_placeholders,),
+        constraints=txt.CONSTRAINTS,
     ),
 }
 
