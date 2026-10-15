@@ -106,8 +106,9 @@ def test_pack_blocks_oversized_kept_whole():
     assert markdown.pack_blocks(["aaaaa"], 3) == ["aaaaa"]
 
 
-def test_pack_blocks_empty_blocks_preserved():
-    assert markdown.pack_blocks(["", "a"], 10) == ["", "a"]
+def test_pack_blocks_empty_blocks_merged_into_neighbor():
+    # 空块并入相邻块(与 chunk_text 现行为一致),join 不变量不受影响
+    assert markdown.pack_blocks(["", "a"], 10) == ["a"]
 ```
 
 - [ ] **Step 2: 运行确认 RED**
