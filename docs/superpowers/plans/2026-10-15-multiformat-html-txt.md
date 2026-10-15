@@ -45,7 +45,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 **Files:**
 - Modify: `src/md2zh/markdown.py`(抽取 pack_blocks/split_blank_lines、新增 CONSTRAINTS)
 - Create: `src/md2zh/formats.py`(仅 md 条目)
-- Test: `tests/test_formats.py`(新)、`tests/test_markdown.py`(追加 4 例)
+- Test: `tests/test_formats.py`(新)、`tests/test_markdown.py`(追加 5 例)
 
 **Interfaces:**
 - Produces: `markdown.CONSTRAINTS: tuple[str, ...]`(三条 md 约束,api.py 现 FORMAT_CONSTRAINTS 文案逐字迁移);`markdown.pack_blocks(blocks, max_chars) -> list[str]`;`markdown.split_blank_lines(text) -> list[str]`;`formats.Format`、`formats.FORMATS`、`formats.get_format(name)`、`formats.infer_format(path)`
@@ -971,8 +971,11 @@ def test_build_prompt_custom_constraints():
 
 
 def test_build_prompt_default_is_md_constraints():
-    # 缺省回落 markdown.CONSTRAINTS,默认输出与既有行为一致
+    # 缺省回落 markdown.CONSTRAINTS(等价断言,防 api 副本漂移——Task 1 审查 Important 流转)
+    from md2zh import markdown
     prompt = api.build_prompt("x", [], "")
+    assert all(c in prompt for c in markdown.CONSTRAINTS)
+    assert "只输出纯文本译文" not in prompt  # html/txt 约束不得混入默认路径
     assert "严格保留 markdown 语法结构,全部格式标记与链接结构原样保留,仅翻译文字内容。" in prompt
     assert "表格保持行数与列数,分隔行保持。" in prompt
 ```
