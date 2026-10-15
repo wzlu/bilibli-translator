@@ -1,6 +1,13 @@
-"""Markdown 块解析与保护:frontmatter 拆分、代码块占位符、文本分段。"""
+"""文本分段与占位符通用工具 + Markdown 适配实现。"""
 
 import re
+
+# 每次请求携带的 markdown 格式约束(自 api.py 迁移,文案逐字不变)
+CONSTRAINTS = (
+    "严格保留 markdown 语法结构,全部格式标记与链接结构原样保留,仅翻译文字内容。",
+    "不得翻译或修改 @@@...@@@ 占位符。",
+    "表格保持行数与列数,分隔行保持。",
+)
 
 
 def split_frontmatter(text: str) -> tuple[str | None, str]:
@@ -119,12 +126,19 @@ def restore_code_blocks(text: str, mapping: dict[str, str]) -> str:
 _TABLE_LIST_RE = re.compile(r"^\s*(\||[-*+]|\d+\.)\s+")
 
 
-def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
-    """按逻辑边界切分文本;所有段按序拼接与原文完全一致。
+def split_blank_lines(text: str) -> list[str]:
+    """按空行切分并保留分隔符(分隔符并入前段)。"""
+    parts = re.split(r"(\n[ \t]*\n)", text)
+    blocks: list[str] = []
+    for i in range(0, len(parts), 2):
+        para = parts[i]
+        sep = parts[i + 1] if i + 1 < len(parts) else ""
+        blocks.append(para + sep)
+    return blocks
 
-    超出 max_chars 的不可分割块(如大表格)保持完整,不做切割。
-    """
-    blocks = _logical_blocks(text)
+
+def pack_blocks(blocks: list[str], max_chars: int) -> list[str]:
+    """贪心装包:按序装入不超过 max_chars 的块;超限块保持完整。"""
     chunks: list[str] = []
     current: list[str] = []
     size = 0
@@ -140,17 +154,22 @@ def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
 
 
 def _logical_blocks(text: str) -> list[str]:
-    """按空行切分并保留分隔符;连续的表格行/列表项合并为一块。"""
-    parts = re.split(r"(\n[ \t]*\n)", text)
-    blocks: list[str] = []
-    for i in range(0, len(parts), 2):
-        para = parts[i]
-        sep = parts[i + 1] if i + 1 < len(parts) else ""
-        if para and _is_table_or_list(para) and blocks and _is_table_or_list(blocks[-1]):
-            blocks[-1] += para + sep
+    """空行切分后,连续的表格行/列表项合并为一块。"""
+    merged: list[str] = []
+    for block in split_blank_lines(text):
+        if block and _is_table_or_list(block) and merged and _is_table_or_list(merged[-1]):
+            merged[-1] += block
             continue
-        blocks.append(para + sep)
-    return blocks
+        merged.append(block)
+    return merged
+
+
+def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
+    """按逻辑边界切分文本;所有段按序拼接与原文完全一致。
+
+    超出 max_chars 的不可分割块(如大表格)保持完整,不做切割。
+    """
+    return pack_blocks(_logical_blocks(text), max_chars)
 
 
 def _is_table_or_list(para: str) -> bool:

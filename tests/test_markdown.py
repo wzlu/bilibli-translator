@@ -142,3 +142,25 @@ def test_link_url_with_inline_code_roundtrips():
     src = "[x](`code`)"
     protected, mapping = markdown.protect_code_blocks(src)
     assert markdown.restore_code_blocks(protected, mapping) == src
+
+
+def test_split_blank_lines_keeps_separators():
+    blocks = markdown.split_blank_lines("a\n\nb")
+    assert blocks == ["a\n\n", "b"]
+
+
+def test_split_blank_lines_leading_blank():
+    assert markdown.split_blank_lines("\n\na") == ["\n\n", "a"]
+
+
+def test_pack_blocks_greedy_packing():
+    assert markdown.pack_blocks(["aa", "bb", "cc"], 4) == ["aabb", "cc"]
+
+
+def test_pack_blocks_oversized_kept_whole():
+    assert markdown.pack_blocks(["aaaaa"], 3) == ["aaaaa"]
+
+
+def test_pack_blocks_empty_blocks_merged_into_neighbor():
+    # 空块并入相邻块(与 chunk_text 现行为一致),join 不变量不受影响
+    assert markdown.pack_blocks(["", "a"], 10) == ["a"]
