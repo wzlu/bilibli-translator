@@ -374,10 +374,11 @@ def test_chunk_join_invariant_and_token_atomicity():
 
 
 def test_chunk_minified_long_multi_chunk():
-    # minified 长文:令牌边界分段,多块且每块不超限(超限块除外)
+    # minified 长文:先 protect 再分段(管线契约),令牌边界分段,多块且每块不超限
     text = "<b>x</b> " * 50
-    chunks = html.chunk_text(text, 100)
-    assert "".join(chunks) == text
+    protected, mapping = html.protect(text)
+    chunks = html.chunk_text(protected, 100)
+    assert "".join(chunks) == protected
     assert len(chunks) > 1
     assert max(len(c) for c in chunks) <= 100
 
