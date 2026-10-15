@@ -7,6 +7,8 @@ import time
 import pytest
 
 from md2zh import api
+from md2zh import formats
+from md2zh import markdown
 from md2zh import ignore
 from md2zh import translator
 
@@ -74,13 +76,15 @@ def test_translate_file_missing(monkeypatch, tmp_path):
     assert result.exit_code == translator.EX_NOINPUT
 
 
-def test_translate_file_not_md(tmp_path):
+def test_translate_file_txt_inferred(monkeypatch, tmp_path):
+    # 非 .md 文件按扩展名推断格式:a.txt → txt 适配器,生成 a_zh.txt
     p = tmp_path / "a.txt"
     p.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "译文")
     result = translator.translate_file(str(p), force=False, glossary=[],
                                        api_base="http://x", model="m")
-    assert result.status == "failed"
-    assert result.exit_code == translator.EX_NOINPUT
+    assert result.status == "ok"
+    assert (tmp_path / "a_zh.txt").read_text(encoding="utf-8") == "译文"
 
 
 def test_translate_file_api_error(monkeypatch, tmp_path):
@@ -494,12 +498,12 @@ def test_long_context_restores_placeholders(monkeypatch):
     chunk1 = "正文段落。" * 570 + " 结尾代码 `code_tail`。"
     chunk2 = "后续正文。" * 200 + " 代码 `code_2`。"
     text = chunk1 + "\n\n" + chunk2
-    protected, mapping = translator.markdown.protect_code_blocks(text)
+    protected, mapping = markdown.protect_code_blocks(text)
 
     result = translator._translate_long(protected, [], "http://x", "m", mapping=mapping)
 
     # 文档级路径:保护 → 分段翻译 → 还原,闭环应还原出原始文本
-    assert translator.markdown.restore_code_blocks(result, mapping) == text
+    assert markdown.restore_code_blocks(result, mapping) == text
     assert len(prompts) == 2
     # 第二块请求携带上下文:截取【上下文参考】与【源文】之间的段落
     ctx = prompts[1].split("【上下文参考】(仅供术语一致参考,不要翻译本段)\n", 1)[1].split("\n【源文】", 1)[0]
@@ -606,7 +610,7 @@ def test_run_batch_parallel_submits_all(monkeypatch, capsys):
     started: list[str] = []
     gate = threading.Event()
 
-    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
         started.append(src_path)
         gate.wait()
         return translator.TranslateResult("ok", src_path + "_zh")
@@ -636,7 +640,7 @@ def test_run_batch_parallel_submits_all(monkeypatch, capsys):
 
 def test_run_batch_completed_first_printed_first(monkeypatch, capsys):
     # 慢文件先提交、快文件后提交:完成即输出,快文件路径先出现(乱序)
-    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
         time.sleep(0.5 if src_path.endswith("slow.md") else 0.05)
         return translator.TranslateResult("ok", src_path + "_zh")
 
@@ -666,7 +670,7 @@ def test_run_batch_ignored_not_submitted(monkeypatch, tmp_path, capsys):
 
 def test_run_batch_unexpected_error_continues(monkeypatch, capsys):
     # 未知异常兜底:计入失败并继续处理其余文件
-    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
         if src_path == "bad.md":
             raise RuntimeError("模拟未知回归")
         return translator.TranslateResult("ok", src_path + "_zh")
@@ -682,7 +686,7 @@ def test_run_batch_unexpected_error_continues(monkeypatch, capsys):
 
 def test_run_batch_keyboard_interrupt_reraises(monkeypatch):
     # 中断从 fut.result() 传出后经外层 shutdown 不等待关停并重新抛出
-    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(translator, "translate_file", fake)
@@ -730,7 +734,7 @@ def test_run_batch_keyboard_interrupt_does_not_wait(monkeypatch):
     release = threading.Event()
     ki_raised = threading.Event()
 
-    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
         if src_path == "first.md":
             # 等第二个任务进入运行态再抛 KI,消除取队竞态:确保中断时确有运行中任务
             task2_running.wait(5)
@@ -812,7 +816,8 @@ def test_run_batch_stderr_goes_through_warn(monkeypatch):
     def fake_warn(message):
         seen.append(message)
 
-    def fake_translate(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake_translate(src_path, *, force, glossary, api_base, model, repair, ollama=False,
+                       fmt=None):
         return translator.TranslateResult("failed", "模拟失败", translator.EX_TEMPFAIL)
 
     monkeypatch.setattr(translator, "_warn", fake_warn)
@@ -838,7 +843,8 @@ def test_run_batch_stderr_routes_all_branches(monkeypatch, tmp_path):
     ti.write_text(str(p) + "\n", encoding="utf-8")
     matcher = ignore.load_ignore(str(ti))
 
-    def fake_translate(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake_translate(src_path, *, force, glossary, api_base, model, repair, ollama=False,
+                       fmt=None):
         if src_path == "skip.md":
             return translator.TranslateResult("skipped", "译文已存在", 0)
         if src_path == "boom.md":
@@ -867,7 +873,7 @@ def test_run_batch_broken_pipe_cancels_pending(monkeypatch):
         def flush(self):
             pass
 
-    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
         started.append(src_path)
         if src_path != "f1.md":
             release.wait(10)  # f2/f3 被取消则永不执行;未取消则阻塞于此
@@ -937,7 +943,7 @@ def test_run_batch_threads_ollama_to_translate_file(monkeypatch, capsys):
     # run_batch 把 ollama 透传给 translate_file;线程池行为不受标志影响
     calls = []
 
-    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False):
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
         calls.append(ollama)
         return translator.TranslateResult("ok", src_path + "_zh")
 
@@ -968,3 +974,78 @@ def test_ollama_threads_through_frontmatter_and_long_edges(monkeypatch, tmp_path
     # frontmatter 一次 + 正文两次分段(6000 字符 / 3000 段长)
     assert len(calls) >= 3
     assert all(flag is True for flag in calls)
+
+
+def test_translate_file_html_roundtrip_end_to_end(monkeypatch, tmp_path):
+    # .html 推断 html 适配器:真实标签/属性/实体不进 API 请求,还原字节级完好
+    src = tmp_path / "page.html"
+    src.write_text('<p title="a > b">Hello &amp; bye</p>', encoding="utf-8")
+
+    def fake(*a, **k):
+        prompt = a[2]
+        # 模型视角:标签、属性、实体全部占位符化
+        assert '<p title="a > b">' not in prompt
+        assert "&amp;" not in prompt
+        # 回传【源文】原文:占位符与本块一致,校验通过
+        return prompt.split("【源文】\n", 1)[1].split("\n\n【约束要求】", 1)[0]
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    result = translator.translate_file(str(src), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"
+    content = (tmp_path / "page_zh.html").read_text(encoding="utf-8")
+    assert content == '<p title="a > b">Hello &amp; bye</p>'
+    assert "@@@" not in content
+
+
+def test_translate_file_fmt_override(monkeypatch, tmp_path):
+    # 显式 fmt 覆盖扩展名推断:.xyz + fmt="html" 走 html 适配器
+    p = tmp_path / "a.xyz"
+    p.write_text("<p>Hi</p>", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text",
+                        lambda *a, **k: "@@@HTMLTAG_0@@@你好@@@HTMLTAG_1@@@")
+    result = translator.translate_file(str(p), force=False, glossary=[],
+                                       api_base="http://x", model="m", fmt="html")
+    assert result.status == "ok"
+    assert (tmp_path / "a_zh.xyz").read_text(encoding="utf-8") == "<p>你好</p>"
+
+
+def test_translate_file_unknown_ext_falls_back_md(monkeypatch, tmp_path):
+    # 未知扩展名回落 md 适配器(向后兼容):不再拒绝,按 md 处理
+    p = tmp_path / "a.xyz"
+    p.write_text("# Hello", encoding="utf-8")
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "# 你好")
+    result = translator.translate_file(str(p), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"
+    assert (tmp_path / "a_zh.xyz").read_text(encoding="utf-8") == "# 你好"
+
+
+def test_check_block_dispatch_by_format():
+    # 校验器按格式分派:html 不跑链接/表格校验,多裸 < 出问题;txt 只跑占位符
+    html_fmt = formats.get_format("html")
+    assert translator._check_block("hi", "你好", html_fmt) == []
+    assert translator._check_block("hi", "你好 <b>", html_fmt)
+    assert translator._check_block("| a |\n", "甲", html_fmt) == []
+    assert translator._check_block("| a |\n", "甲", formats.get_format("txt")) == []
+
+
+def test_translate_long_uses_format_chunk(monkeypatch):
+    # 超长 HTML 在占位符令牌边界分段:多次 API 调用且还原闭环
+    calls = {"n": 0}
+
+    def fake(*a, **k):
+        calls["n"] += 1
+        prompt = a[2]
+        return prompt.split("【源文】\n", 1)[1].split("\n\n【约束要求】", 1)[0]
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
+    monkeypatch.setattr(translator, "CHUNK_SIZE", 100)
+    text = "<b>x</b> " * 50
+    html_fmt = formats.get_format("html")
+    protected, mapping = html_fmt.protect(text)
+    result = translator._translate_long(protected, [], "http://x", "m",
+                                        mapping=mapping, fmt=html_fmt)
+    assert html_fmt.restore(result, mapping) == text
+    assert calls["n"] > 1

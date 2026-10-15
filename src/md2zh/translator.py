@@ -7,7 +7,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
-from md2zh import api, checks, ignore, markdown
+from md2zh import api, formats, ignore
 
 # 退出码契约(规格 §8),全 CLI 唯一出处
 EX_OK = 0
@@ -69,10 +69,12 @@ def _atomic_write(path: str, content: str, newline: str = "\n") -> None:
 
 def translate_file(src_path: str, *, force: bool, glossary: list[str],
                    api_base: str, model: str, repair: int = 0,
-                   ollama: bool = False) -> TranslateResult:
-    """翻译单个文件;已存在译文且未 --force 时跳过。"""
-    if not src_path.lower().endswith(".md"):
-        return TranslateResult("failed", "不是 .md 文件", EX_NOINPUT)
+                   ollama: bool = False, fmt: str | None = None) -> TranslateResult:
+    """翻译单个文件;已存在译文且未 --force 时跳过。
+
+    fmt 缺省按扩展名推断(未知扩展名回落 md);显式指定时覆盖推断。
+    """
+    fmt_obj = formats.get_format(fmt or formats.infer_format(src_path))
     if not os.path.isfile(src_path):
         return TranslateResult("failed", "文件不存在", EX_NOINPUT)
     dst_path = _zh_path(src_path)
@@ -86,8 +88,8 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
         newline = "\r\n" if "\r\n" in text else "\n"
         text = text.replace("\r\n", "\n").replace("\r", "\n")
         translated = _translate_document(text, glossary, api_base, model,
-                                         source=src_path, repair=repair,
-                                         ollama=ollama)
+                                         fmt=fmt_obj, source=src_path,
+                                         repair=repair, ollama=ollama)
         _atomic_write(dst_path, translated.replace("\r\n", "\n"), newline=newline)
     except api.TranslateError as e:
         return TranslateResult("failed", f"翻译 API 错误: {e}", EX_TEMPFAIL)
@@ -99,11 +101,13 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
 
 
 def _translate_document(text: str, glossary: list[str], api_base: str, model: str,
-                        *, source: str = "", repair: int = 0,
-                        ollama: bool = False) -> str:
+                        *, fmt: formats.Format | None = None, source: str = "",
+                        repair: int = 0, ollama: bool = False) -> str:
     """文档级翻译:frontmatter 独立翻译,正文按单次/分段策略处理。"""
-    fm, rest = markdown.split_frontmatter(text)
-    protected, mapping = markdown.protect_code_blocks(rest)
+    if fmt is None:
+        fmt = formats.get_format("md")
+    fm, rest = fmt.split_frontmatter(text)
+    protected, mapping = fmt.protect(rest)
 
     if fm is None:
         head = ""
@@ -112,24 +116,31 @@ def _translate_document(text: str, glossary: list[str], api_base: str, model: st
 
     if len(protected) <= SINGLE_CALL_LIMIT:
         body = _translate_chunk(protected, glossary, api_base, model, MAX_TOKENS_SINGLE,
-                                source=source, repair=repair, ollama=ollama)
+                                source=source, repair=repair, ollama=ollama, fmt=fmt)
     else:
         body = _translate_long(protected, glossary, api_base, model,
                                mapping=mapping, source=source, repair=repair,
-                               ollama=ollama)
+                               ollama=ollama, fmt=fmt)
 
-    body = markdown.restore_code_blocks(body, mapping)
+    body = fmt.restore(body, mapping)
     if head:
         return f"{head.rstrip()}\n\n{body.lstrip()}"
     return body
 
 
-def _check_block(src: str, dst: str) -> list[str]:
-    """块级校验汇总:链接/表格/占位符。"""
+def _check_block(src: str, dst: str, fmt: formats.Format | None = None) -> list[str]:
+    """块级校验汇总:按格式取校验器(链接/表格为 md 专有)。"""
+    if fmt is None:
+        fmt = formats.get_format("md")
     problems: list[str] = []
-    for fn in (checks.check_links, checks.check_tables, checks.check_placeholders):
+    for fn in fmt.validators:
         problems.extend(fn(src, dst))
     return problems
+
+
+def _leading_whitespace(text: str) -> str:
+    """返回文本开头的空白串(回挂译文以保持分段边界)。"""
+    return text[:len(text) - len(text.lstrip())]
 
 
 def _trailing_whitespace(text: str) -> str:
@@ -165,40 +176,48 @@ def _repair(make_prompt, check, *, api_base: str, model: str,
 
 def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
                      max_tokens: int, context: str = "", *, source: str = "",
-                     repair: int = 0, ollama: bool = False) -> str:
+                     repair: int = 0, ollama: bool = False,
+                     fmt: formats.Format | None = None) -> str:
     """翻译一段文本:校验失败按 repair 可选重译,始终采用译文。"""
+    if fmt is None:
+        fmt = formats.get_format("md")
     dst = _repair(
-        make_prompt=lambda fix: api.build_prompt(src, glossary, fix_notes=fix, context=context),
-        check=lambda d: _check_block(src, d),
+        make_prompt=lambda fix: api.build_prompt(src, glossary, fix_notes=fix,
+                                                 context=context,
+                                                 constraints=list(fmt.constraints)),
+        check=lambda d: _check_block(src, d, fmt),
         api_base=api_base, model=model, max_tokens=max_tokens, label="块",
         source=source, retries=repair, ollama=ollama,
     )
-    # 译文经 API strip,回挂源块尾随空白,保持分段边界与文件末尾布局
-    return dst + _trailing_whitespace(src)
+    # 译文经 API strip,回挂源块首尾空白,保持分段边界与文件末尾布局
+    return _leading_whitespace(src) + dst + _trailing_whitespace(src)
 
 
 def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
                     *, mapping: dict[str, str], source: str = "",
-                    repair: int = 0, ollama: bool = False) -> str:
+                    repair: int = 0, ollama: bool = False,
+                    fmt: formats.Format | None = None) -> str:
     """超长文本:分段翻译,每段附前段上下文参考保证术语延续。
 
     上下文发送前还原占位符:占位符令牌不进入 API 请求,防止模型把
     上一块的占位符带入输出而触发「未知占位符」校验失败。
     """
+    if fmt is None:
+        fmt = formats.get_format("md")
     parts: list[str] = []
     prev_context = ""
     half = CONTEXT_TAIL // 2
-    for chunk in markdown.chunk_text(text, CHUNK_SIZE):
+    for chunk in fmt.chunk_text(text, CHUNK_SIZE):
         # 不可分割的超限块(如大表格)按块长放大输出预算,避免确定性截断
         budget = max(MAX_TOKENS_CHUNK, len(chunk) * 2 + 200)
         translated = _translate_chunk(chunk, glossary, api_base, model,
                                       budget, context=prev_context, source=source,
-                                      repair=repair, ollama=ollama)
+                                      repair=repair, ollama=ollama, fmt=fmt)
         parts.append(translated)
         # 前段上下文:上一段(原文+译文)尾部,先还原占位符再切尾部——
         # 上下文与文件原文同形,且不可能切出半截占位符令牌
-        src_tail = markdown.restore_code_blocks(chunk, mapping)[-half:]
-        dst_tail = markdown.restore_code_blocks(translated, mapping)[-half:]
+        src_tail = fmt.restore(chunk, mapping)[-half:]
+        dst_tail = fmt.restore(translated, mapping)[-half:]
         prev_context = f"原文: {src_tail}\n译文: {dst_tail}"
     return "".join(parts)
 
@@ -226,11 +245,11 @@ def parse_filelist(path: str) -> list[str]:
 
 def run_single(path: str, *, force: bool, glossary: list[str],
                api_base: str, model: str, repair: int = 0,
-               ollama: bool = False) -> int:
+               ollama: bool = False, fmt: str | None = None) -> int:
     """单文件模式:失败返回具体退出码(65/66/74/75)。"""
     result = translate_file(path, force=force, glossary=glossary,
                             api_base=api_base, model=model, repair=repair,
-                            ollama=ollama)
+                            ollama=ollama, fmt=fmt)
     if result.status == "ok":
         print(result.detail, flush=True)
         return EX_OK
@@ -244,11 +263,12 @@ def run_single(path: str, *, force: bool, glossary: list[str],
 def run_batch(paths: list[str], *, force: bool, glossary: list[str],
               api_base: str, model: str, repair: int = 0,
               ignore_matcher: ignore.IgnoreMatcher | None = None,
-              max_threads: int = 10, ollama: bool = False) -> int:
+              max_threads: int = 10, ollama: bool = False,
+              fmt: str | None = None) -> int:
     """批量模式:线程池并行翻译,主线程乱序输出并汇总;存在失败返回 EX_PARTIAL。
 
     忽略列表命中优先于扩展名与存在性检查,且不受 --force 影响;
-    命中文件在主线程前置处理,不提交线程池。
+    命中文件在主线程前置处理,不提交线程池。fmt 显式时全局覆盖,缺省逐文件推断。
     """
     ok = skipped = ignored = failed = 0
     todo: list[str] = []
@@ -262,7 +282,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
     try:
         futures = {executor.submit(translate_file, p, force=force, glossary=glossary,
                                    api_base=api_base, model=model, repair=repair,
-                                   ollama=ollama): p
+                                   ollama=ollama, fmt=fmt): p
                    for p in todo}
         for fut in as_completed(futures):
             p = futures[fut]
@@ -294,8 +314,8 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
 
 
 def run_stdin(*, glossary: list[str], api_base: str, model: str, repair: int = 0,
-              ollama: bool = False) -> int:
-    """stdin 模式:读入 Markdown 文本,译文写 stdout(管道过滤器)。"""
+              ollama: bool = False, fmt: str = "md") -> int:
+    """stdin 模式:读入文本,译文写 stdout(管道过滤器);fmt 缺省 md。"""
     try:
         # utf-8-sig 与文件读取一致:BOM 容忍;stdin 无路径,直接取 buffer 解码
         text = sys.stdin.buffer.read().decode("utf-8-sig")
@@ -307,8 +327,8 @@ def run_stdin(*, glossary: list[str], api_base: str, model: str, repair: int = 0
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     try:
         translated = _translate_document(text, glossary, api_base, model,
-                                         source="<stdin>", repair=repair,
-                                         ollama=ollama)
+                                         fmt=formats.get_format(fmt), source="<stdin>",
+                                         repair=repair, ollama=ollama)
     except api.TranslateError as e:
         print(f"md2zh: 错误: 翻译 API 错误: {e}", file=sys.stderr)
         return EX_TEMPFAIL

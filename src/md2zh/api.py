@@ -6,6 +6,8 @@ import sys
 
 import requests
 
+from md2zh import markdown
+
 DEFAULT_API_BASE = "https://index-translate.bilibili.com/v1"
 DEFAULT_MODEL = "Index-Translate-35B-A3B"
 OLLAMA_API_BASE = "http://localhost:11434/v1"
@@ -18,14 +20,6 @@ REQUEST_TIMEOUT = 120
 
 class TranslateError(Exception):
     """翻译 API 调用失败(网络错误/HTTP 错误/空结果,重试耗尽)。"""
-
-
-# 每次请求携带的 markdown 格式约束(稀疏化:不逐项点名标记,避免模型过度加粗/改写)
-FORMAT_CONSTRAINTS = [
-    "严格保留 markdown 语法结构,全部格式标记与链接结构原样保留,仅翻译文字内容。",
-    "不得翻译或修改 @@@...@@@ 占位符。",
-    "表格保持行数与列数,分隔行保持。",
-]
 
 
 def load_glossary(path: str | None) -> list[str]:
@@ -67,9 +61,15 @@ def _append_requirements(constraints: list[str], glossary: list[str], fix_notes:
         constraints.append(f"【硬性要求】上次翻译存在以下问题,请修正: {fix_notes}")
 
 
-def build_prompt(text: str, glossary: list[str], fix_notes: str = "", context: str = "") -> str:
-    """构建翻译提示词:【源文】+【约束要求】(格式约束+术语表+修复说明)。"""
-    constraints = list(FORMAT_CONSTRAINTS)
+def build_prompt(text: str, glossary: list[str], fix_notes: str = "", context: str = "",
+                 constraints: list[str] | None = None) -> str:
+    """构建翻译提示词:【源文】+【约束要求】(格式约束+术语表+修复说明)。
+
+    constraints 缺省回落 markdown.CONSTRAINTS(保持既有默认行为);
+    各格式经 formats 注册表传入自己的约束文本。
+    """
+    if constraints is None:
+        constraints = list(markdown.CONSTRAINTS)
     _append_requirements(constraints, glossary, fix_notes)
     if context:
         # 上下文仅供术语参考:硬性禁止输出上下文内容,防止模型把参考段带入译文
