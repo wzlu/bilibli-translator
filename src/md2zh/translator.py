@@ -139,7 +139,7 @@ def _check_block(src: str, dst: str, fmt: formats.Format | None = None) -> list[
 
 
 def _leading_whitespace(text: str) -> str:
-    """返回文本开头的空白串(回挂译文以保持分段边界)。"""
+    """返回文本开头的空白串(回挂译文以保持分段边界与文件开头布局)。"""
     return text[:len(text) - len(text.lstrip())]
 
 
@@ -189,7 +189,7 @@ def _translate_chunk(src: str, glossary: list[str], api_base: str, model: str,
         api_base=api_base, model=model, max_tokens=max_tokens, label="块",
         source=source, retries=repair, ollama=ollama,
     )
-    # 译文经 API strip,回挂源块首尾空白,保持分段边界与文件末尾布局
+    # 译文经 API strip,回挂源块首尾空白,保持分段边界与文件布局
     return _leading_whitespace(src) + dst + _trailing_whitespace(src)
 
 

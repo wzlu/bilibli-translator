@@ -1049,3 +1049,11 @@ def test_translate_long_uses_format_chunk(monkeypatch):
                                         mapping=mapping, fmt=html_fmt)
     assert html_fmt.restore(result, mapping) == text
     assert calls["n"] > 1
+
+
+def test_chunk_leading_whitespace_preserved(monkeypatch):
+    # 块首空白与块尾空白对称回挂:html 令牌边界分段下块首空白不得被 API strip 吃掉
+    monkeypatch.setattr(api, "translate_text", lambda *a, **k: "译文")
+    result = translator._translate_chunk("  word ", [], "http://x", "m", 4096,
+                                         fmt=formats.get_format("html"))
+    assert result == "  译文 "
