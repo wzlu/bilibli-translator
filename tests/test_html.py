@@ -86,18 +86,37 @@ def test_mapping_values_never_contain_tokens():
     assert html.restore(protected, mapping) == src
 
 
+def test_find_close_unicode_casefold_safe():
+    # U+0130("İ")lower 后变 2 字符:闭合查找索引必须取自原文,否则块边界错位吞字符
+    text = "İ<script>var a=1;</script><div>hi</div>"
+    protected, mapping = html.protect(text)
+    assert html.restore(protected, mapping) == text
+    assert mapping["@@@HTMLBLOCK_0@@@"] == "<script>var a=1;</script>"
+    assert "hi" in protected
+    assert "div>hi" not in protected
+
+
+def test_raw_block_ends_at_script_slash_close():
+    # </script/>:斜杠亦是合法终止符(HTML5 appropriate end tag 语义)
+    text = "<script>x</script/>tail"
+    protected, mapping = html.protect(text)
+    assert html.restore(protected, mapping) == text
+    assert mapping["@@@HTMLBLOCK_0@@@"] == "<script>x</script/>"
+    assert "tail" in protected
+
+
 def test_split_frontmatter_returns_none():
     assert html.split_frontmatter("<p>x</p>") == (None, "<p>x</p>")
 
 
 def test_chunk_join_invariant_and_token_atomicity():
-    # 令牌/空行边界切分:拼接恒等,令牌不跨块
+    # 令牌/空行边界切分:拼接恒等;逐块回收的令牌序列 == 保护态全文令牌序列(令牌被切开即漏配)
     text = "<p>hello</p>\n\n<div>world</div>"
-    chunks = html.chunk_text(text, 4)
-    assert "".join(chunks) == text
-    for chunk in chunks:
-        for token in re.findall(r"@@@[A-Z]+_\d+@@@", chunk):
-            assert token in text
+    protected, _ = html.protect(text)
+    chunks = html.chunk_text(protected, 4)
+    assert "".join(chunks) == protected
+    pat = re.compile(r"@@@[A-Z]+_\d+@@@")
+    assert [t for c in chunks for t in pat.findall(c)] == pat.findall(protected)
 
 
 def test_chunk_minified_long_multi_chunk():

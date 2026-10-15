@@ -170,16 +170,21 @@ def _find_close(text: str, start: int, name: str) -> int:
     """查找 </name 的闭合 >(不区分大小写),返回 > 之后的偏移;找不到返回 -1。
 
     与 HTML 规范一致:原始文本块在首个 </name 处结束。
+    定宽切片比较:索引始终取自原文(str.lower() 对 U+0130 等字符
+    不保持长度,不可用其偏移切原文)。
     """
-    lower = text.lower()
-    token = "</" + name.lower()
-    i = lower.find(token, start)
-    while i != -1:
-        after = i + len(token)
-        if after >= len(lower) or lower[after] in " \t\r\n>":
-            j = lower.find(">", after)
-            return -1 if j == -1 else j + 1
-        i = lower.find(token, after)
+    token_lower = ("</" + name).lower()
+    tlen = len(token_lower)
+    L = len(text)
+    i = start
+    while i < L:
+        # 先找 "<",再定宽不区分大小写比较 "</name";终止符为空白/斜杠/大于号
+        if text[i] == "<" and text[i:i + tlen].lower() == token_lower:
+            after = i + tlen
+            if after >= L or text[after] in " \t\r\n\f/>":
+                j = text.find(">", after)
+                return -1 if j == -1 else j + 1
+        i += 1
     return -1
 
 
