@@ -364,13 +364,32 @@ def test_split_frontmatter_returns_none():
 
 
 def test_chunk_join_invariant_and_token_atomicity():
-    # 令牌/空行边界切分:拼接恒等,令牌不跨块
+    # 令牌/空行边界切分:拼接恒等;逐块回收的令牌序列 == 保护态全文令牌序列(令牌被切开即漏配)
     text = "<p>hello</p>\n\n<div>world</div>"
-    chunks = html.chunk_text(text, 4)
-    assert "".join(chunks) == text
-    for chunk in chunks:
-        for token in re.findall(r"@@@[A-Z]+_\d+@@@", chunk):
-            assert token in text
+    protected, _ = html.protect(text)
+    chunks = html.chunk_text(protected, 4)
+    assert "".join(chunks) == protected
+    pat = re.compile(r"@@@[A-Z]+_\d+@@@")
+    assert [t for c in chunks for t in pat.findall(c)] == pat.findall(protected)
+
+
+def test_find_close_unicode_casefold_safe():
+    # U+0130 经 str.lower() 变 2 字符:定宽切片保证边界偏移不错位、往返恒等
+    text = "İ<script>var a=1;</script><div>hi</div>"
+    protected, mapping = html.protect(text)
+    assert html.restore(protected, mapping) == text
+    assert mapping["@@@HTMLBLOCK_0@@@"] == "<script>var a=1;</script>"
+    assert "hi" in protected
+    assert "div>hi" not in protected
+
+
+def test_raw_block_ends_at_script_slash_close():
+    # 终止符集合含 /:斜杠结束标签正确闭合原始文本块,tail 可译
+    text = "<script>x</script/>tail"
+    protected, mapping = html.protect(text)
+    assert html.restore(protected, mapping) == text
+    assert mapping["@@@HTMLBLOCK_0@@@"] == "<script>x</script/>"
+    assert "tail" in protected
 
 
 def test_chunk_minified_long_multi_chunk():
@@ -610,16 +629,21 @@ def _find_close(text: str, start: int, name: str) -> int:
     """查找 </name 的闭合 >(不区分大小写),返回 > 之后的偏移;找不到返回 -1。
 
     与 HTML 规范一致:原始文本块在首个 </name 处结束。
+    定宽切片比较:索引始终取自原文(str.lower() 对 U+0130 等字符
+    不保持长度,不可用其偏移切原文)。
     """
-    lower = text.lower()
-    token = "</" + name.lower()
-    i = lower.find(token, start)
-    while i != -1:
-        after = i + len(token)
-        if after >= len(lower) or lower[after] in " \t\r\n>":
-            j = lower.find(">", after)
-            return -1 if j == -1 else j + 1
-        i = lower.find(token, after)
+    token_lower = ("</" + name).lower()
+    tlen = len(token_lower)
+    L = len(text)
+    i = start
+    while i < L:
+        # 先找 "<",再定宽不区分大小写比较 "</name";终止符为空白/斜杠/大于号
+        if text[i] == "<" and text[i:i + tlen].lower() == token_lower:
+            after = i + tlen
+            if after >= L or text[after] in " \t\r\n\f/>":
+                j = text.find(">", after)
+                return -1 if j == -1 else j + 1
+        i += 1
     return -1
 
 
