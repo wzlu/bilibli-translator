@@ -207,7 +207,7 @@ def test_max_threads_passthrough(monkeypatch, tmp_path, argv, expected):
     seen: dict = {}
 
     def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
-                       ignore_matcher, max_threads, ollama=False):
+                       ignore_matcher, max_threads, ollama=False, fmt=None):
         seen["max_threads"] = max_threads
         return translator.EX_OK
 
@@ -266,7 +266,7 @@ def test_ollama_resolves_defaults_and_single_thread(monkeypatch, tmp_path):
     seen = {}
 
     def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
-                       ignore_matcher, max_threads, ollama=False):
+                       ignore_matcher, max_threads, ollama=False, fmt=None):
         seen.update(api_base=api_base, model=model,
                     max_threads=max_threads, ollama=ollama)
         return translator.EX_OK
@@ -288,7 +288,7 @@ def test_no_ollama_defaults_unchanged(monkeypatch, tmp_path):
     seen = {}
 
     def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
-                       ignore_matcher, max_threads, ollama=False):
+                       ignore_matcher, max_threads, ollama=False, fmt=None):
         seen.update(api_base=api_base, model=model,
                     max_threads=max_threads, ollama=ollama)
         return translator.EX_OK
@@ -339,3 +339,90 @@ def test_help_contains_ollama(capsys):
         cli.main(["--help"])
     assert e.value.code == 0
     assert "--ollama" in capsys.readouterr().out
+
+
+def test_format_invalid_exits_64(capsys):
+    # --format 仅接受 md/html/txt,非法值按用法错误退出 64
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--format", "xml", "a.md"])
+    assert e.value.code == translator.EX_USAGE
+
+
+def test_format_passed_to_stdin(monkeypatch):
+    # stdin 模式:显式 --format txt 透传;缺省回落 md
+    class _FakeStdin:
+        def __init__(self, data: bytes):
+            self.buffer = io.BytesIO(data)
+
+    seen = {}
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(b"x"))
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+
+    def fake_run_stdin(*, glossary, api_base, model, repair, ollama=False, fmt="md"):
+        seen["fmt"] = fmt
+        return translator.EX_OK
+
+    monkeypatch.setattr(translator, "run_stdin", fake_run_stdin)
+    assert cli.main(["-", "--format", "txt"]) == translator.EX_OK
+    assert seen["fmt"] == "txt"
+    assert cli.main(["-"]) == translator.EX_OK
+    assert seen["fmt"] == "md"
+
+
+def test_format_passed_to_single(monkeypatch, tmp_path):
+    # 单文件模式:--format html 透传到 translate_file
+    seen = {}
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+
+    def fake_translate_file(src_path, *, force, glossary, api_base, model, repair,
+                            ollama=False, fmt=None):
+        seen["fmt"] = fmt
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake_translate_file)
+    assert cli.main([str(tmp_path / "a.md"), "--format", "html"]) == translator.EX_OK
+    assert seen["fmt"] == "html"
+
+
+def test_format_global_override_batch(monkeypatch, tmp_path):
+    # 批量模式:显式 --format 全局覆盖;缺省 None 由 translate_file 逐文件推断
+    seen = {}
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(api, "load_glossary", lambda *a, **k: [])
+    monkeypatch.setattr(translator, "parse_filelist", lambda p: ["a.md"])
+    monkeypatch.setattr(ignore, "load_ignore", lambda *a, **k: None)
+
+    def fake_run_batch(paths, *, force, glossary, api_base, model, repair,
+                       ignore_matcher, max_threads, ollama=False, fmt=None):
+        seen["fmt"] = fmt
+        return translator.EX_OK
+
+    monkeypatch.setattr(translator, "run_batch", fake_run_batch)
+    assert cli.main(["--filelist", "l.txt", "--format", "txt"]) == translator.EX_OK
+    assert seen["fmt"] == "txt"
+    assert cli.main(["--filelist", "l.txt"]) == translator.EX_OK
+    assert seen["fmt"] is None
+
+
+def test_prog_follows_argv0(monkeypatch, capsys):
+    # txt2zh 别名:--version 与用法错误显示 txt2zh;.exe 后缀剥离
+    monkeypatch.setattr(sys, "argv", ["txt2zh.exe"])
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--version"])
+    assert e.value.code == 0
+    assert "txt2zh 0.6.0" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--format", "xml", "a.md"])
+    assert e.value.code == translator.EX_USAGE
+    assert "txt2zh" in capsys.readouterr().err
+
+
+def test_help_mentions_format_and_html_example(capsys):
+    # --help 含 --format 选项与 html/txt 示例
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--help"])
+    assert e.value.code == 0
+    out = capsys.readouterr().out
+    assert "--format" in out
+    assert "page.html" in out
+    assert "txt2zh" in out

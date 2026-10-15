@@ -19,17 +19,32 @@ class _Parser(argparse.ArgumentParser):
         sys.exit(translator.EX_USAGE)
 
 
+def _prog() -> str:
+    """程序名随入口名显示:txt2zh 别名时 usage/--version 显示 txt2zh。
+
+    pytest 等环境下 sys.argv[0] 非本工具入口,回落 md2zh 保兼容。
+    """
+    name = os.path.basename(sys.argv[0])
+    if name.endswith(".exe"):
+        name = name[:-4]
+    return name if name in ("md2zh", "txt2zh") else "md2zh"
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = _Parser(
-        prog="md2zh",
-        description="将英文 Markdown 文件翻译为中文,保存为 *_zh.md(同目录)。",
+        prog=_prog(),
+        description="将英文 Markdown/HTML/TXT 文件翻译为中文,保存为 *_zh.<原扩展名>(同目录)。",
         formatter_class=argparse.RawDescriptionHelpFormatter,  # 保留 epilog 示例的换行
     )
-    parser.add_argument("file", nargs="?", metavar="FILE", help="要翻译的 Markdown 文件")
+    parser.add_argument("file", nargs="?", metavar="FILE",
+                        help="要翻译的文件(格式按扩展名推断:.md/.html/.txt;可用 --format 覆盖)")
     parser.add_argument("--filelist", metavar="LIST",
-                        help="文件列表(每行一个 md 文件,# 开头的行被忽略)")
+                        help="文件列表(每行一个文件,# 开头的行被忽略)")
     parser.add_argument("--force", action="store_true",
-                        help="覆盖已存在的 *_zh.md(默认跳过)")
+                        help="覆盖已存在的 *_zh.<扩展名>(默认跳过)")
+    parser.add_argument("--format", choices=("md", "html", "txt"), default=None,
+                        metavar="FMT",
+                        help="输入格式 md/html/txt(默认按扩展名推断;stdin 模式缺省 md)")
     parser.add_argument("--glossary", metavar="FILE",
                         help=f"术语表文件(JSON);缺省加载 {api.DEFAULT_GLOSSARY}")
     parser.add_argument("--api-base", default=None,
@@ -43,18 +58,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="校验失败后的重译次数 0-2(默认 0;失败一律采用译文,不回退原文)")
     parser.add_argument("-c", "--max-threads", type=int, default=None, metavar="N",
                         help="--filelist 模式最大并发线程数(默认 10;仅批量模式生效)")
-    parser.add_argument("--version", action="version", version=f"md2zh {__version__}")
+    parser.add_argument("--version", action="version", version=f"{_prog()} {__version__}")
     parser.epilog = (
         "示例:\n"
-        "  md2zh ABC.md                      翻译单个文件,生成 ABC_zh.md\n"
-        "  md2zh --filelist list.txt         批量翻译(每行一个 md 文件)\n"
-        "  md2zh --filelist list.txt -c 5     批量翻译,最多 5 个线程并行(默认 10)\n"
-        "  md2zh ABC.md --force              覆盖已存在的译文\n"
-        "  md2zh ABC.md --glossary g.json    指定术语表\n"
-        "  md2zh ABC.md --ollama             使用本地 ollama 离线翻译(强制单线程)\n"
-        "  cat ABC.md | md2zh -              管道过滤器(stdin → stdout)\n"
-        "  md2zh ABC.md --repair 2            校验失败后重译至多 2 次(默认不重译)"
-    )
+        "  {prog} ABC.md                      翻译单个 Markdown 文件,生成 ABC_zh.md\n"
+        "  {prog} page.html                  翻译 HTML 文件(格式按扩展名推断)\n"
+        "  {prog} note.txt                   翻译纯文本文件(格式按扩展名推断)\n"
+        "  txt2zh note.txt                  txt2zh 别名(等价 {prog} --format txt)\n"
+        "  {prog} --filelist list.txt        批量翻译(每行一个文件,# 开头忽略)\n"
+        "  {prog} --filelist list.txt -c 5    批量翻译,最多 5 个线程并行(默认 10)\n"
+        "  {prog} ABC.md --force              覆盖已存在的译文\n"
+        "  {prog} ABC.md --glossary g.json    指定术语表\n"
+        "  {prog} ABC.md --ollama             使用本地 ollama 离线翻译(强制单线程)\n"
+        "  cat ABC.md | {prog} -              管道过滤器(stdin → stdout)\n"
+        "  cat page.html | {prog} - --format html  管道过滤器(HTML,stdin 无扩展名需显式 --format)\n"
+        "  {prog} ABC.md --repair 2            校验失败后重译至多 2 次(默认不重译)"
+    ).format(prog=_prog())
     args = parser.parse_args(argv)
     if args.file and args.filelist:
         parser.error("FILE 与 --filelist 不能同时使用")
@@ -99,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.file == "-":
             return translator.run_stdin(glossary=glossary,
                                         api_base=args.api_base, model=args.model,
-                                        repair=args.repair, ollama=args.ollama)
+                                        repair=args.repair, ollama=args.ollama,
+                                        fmt=args.format or "md")
 
         if args.filelist:
             try:
@@ -116,10 +136,11 @@ def main(argv: list[str] | None = None) -> int:
                                         api_base=args.api_base, model=args.model,
                                         ignore_matcher=matcher, repair=args.repair,
                                         max_threads=args.max_threads,
-                                        ollama=args.ollama)
+                                        ollama=args.ollama, fmt=args.format)
         return translator.run_single(args.file, force=args.force, glossary=glossary,
                                      api_base=args.api_base, model=args.model,
-                                     repair=args.repair, ollama=args.ollama)
+                                     repair=args.repair, ollama=args.ollama,
+                                     fmt=args.format)
     except KeyboardInterrupt:
         print("\nmd2zh: 已中断", file=sys.stderr)
         return translator.EX_SIGINT

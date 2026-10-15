@@ -1,3 +1,3 @@
-"""md2zh:英文 Markdown 翻译 CLI。"""
+"""md2zh:英文文本翻译 CLI(多格式)。"""
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
