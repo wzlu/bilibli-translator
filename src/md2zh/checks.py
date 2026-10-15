@@ -46,3 +46,16 @@ def check_placeholders(src: str, dst: str) -> list[str]:
     if extra:
         problems.append(f"出现未知占位符: {extra}")
     return problems
+
+
+def check_html_text(src: str, dst: str) -> list[str]:
+    """HTML 文本校验:译文裸 < / & 计数不得超过源文(计数式,防模型自造标签/实体)。
+
+    保护态源文中标签与实体已占位符化,合法裸字符可能残留(如文本 "a < b"),
+    故仅当译文计数超出源文时计问题,等量保留不误报。
+    """
+    problems = []
+    for ch in "<&":
+        if dst.count(ch) > src.count(ch):
+            problems.append(f"译文裸 '{ch}' 数量超过原文(原文 {src.count(ch)} 个,译文 {dst.count(ch)} 个)")
+    return problems

@@ -40,3 +40,22 @@ def test_check_links_protected_form_detects_swap():
     # URL 占位符化后,链接检查在保护形态下工作:占位符序列不一致即捕获
     problems = checks.check_links("[a](@@@URL_0@@@)", "[a](@@@URL_1@@@)")
     assert problems
+
+
+def test_check_html_text_ok():
+    assert checks.check_html_text("你好", "你好") == []
+
+
+def test_check_html_text_bare_lt_added():
+    problems = checks.check_html_text("你好", "你好 <b>")
+    assert problems
+
+
+def test_check_html_text_bare_amp_added():
+    problems = checks.check_html_text("你好", "你好 &amp; 世界")
+    assert problems
+
+
+def test_check_html_text_legit_bare_preserved():
+    # 源文合法裸字符等量保留(如 "a < b")不误报
+    assert checks.check_html_text("a < b", "甲 < 乙") == []
