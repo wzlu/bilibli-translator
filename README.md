@@ -60,8 +60,11 @@ md2zh ABC.md
 md2zh page.html
 md2zh note.txt
 
-# txt2zh 命令别名(与 md2zh 同一入口)
+# txt2zh 命令别名(同一入口,格式仍按扩展名/--format 决定)
 txt2zh note.txt
+
+# 显式指定输入格式(覆盖扩展名推断;如 .HTM 大写扩展名或 stdin 场景)
+md2zh page.HTM --format html
 
 # 批量翻译:list.txt 每行一个文件,# 开头的行与空行被忽略
 md2zh --filelist list.txt
