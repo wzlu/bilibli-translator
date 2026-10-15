@@ -5,6 +5,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-10-15
+
+### 新增
+
+- 多格式支持:Markdown / HTML / TXT 按扩展名自动推断(`.md/.markdown`、`.html/.htm`、`.txt`),新增 `--format md|html|txt` 显式覆盖(stdin 模式缺省 md;批量模式显式值全局覆盖,缺省逐文件推断)
+- HTML 适配器:引号感知状态机单遍扫描——标签、属性、注释、doctype、实体与 `script/style/pre/code` 原始块经占位符物理隔离(模型不可见,仅文本节点送译),还原字节级保真;新增 `check_html_text` 校验,拦截模型自造的标签/实体
+- TXT 适配器:零保护直通、空行分段
+- `txt2zh` 命令别名(与 `md2zh` 同一入口;usage 与 `--version` 随入口名显示)
+- 格式注册表与按格式分派的提示词约束:各格式适配器自带保护/还原/分段/校验/约束定义
+- 共享分段工具抽取(`pack_blocks`/`split_blank_lines`/朴素占位还原)供各格式适配器复用
+
+### 变更
+
+- 非 .md 文件不再拒绝:未知扩展名回落 Markdown(向后兼容);退出码契约不变(EX_NOINPUT 仅保留「文件不存在」)
+- 默认提示词约束逐字迁移至 Markdown 适配器,输出与 0.5.0 逐字节一致(机制变化,行为不变)
+
+### 修复
+
+- 块级译文首尾空白回挂(原仅回挂末尾):修复令牌边界分段路径下块首空白被 API strip 后丢失(HTML 可达;Markdown 同型潜在缺陷)
+- HTML 状态机 `_find_close` 改定宽切片比较:修复 `text.lower()` 偏移与原文错位(如 U+0130)导致的静默 HTML 损坏,并补 `/`、`\f` 终止符、消除 O(n·k) 扫描
+
 ## [0.5.0] - 2026-10-13
 
 ### 新增
@@ -128,7 +149,8 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.6.0
 [0.5.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.5.0
 [0.4.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.4.0
 [0.3.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.3.0

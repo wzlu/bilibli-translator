@@ -1,0 +1,5 @@
+Plain Text Translation Sample
+
+This is the first paragraph.
+
+This is the second paragraph with some technical terms: API, SDK.

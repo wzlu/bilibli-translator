@@ -1,10 +1,10 @@
 # md2zh
 
-将英文 Markdown 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。亦支持本地 ollama 离线翻译(`--ollama`)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器。全流程自动化、无人值守。
+将英文 Markdown / HTML / TXT 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown`、`.html/.htm`、`.txt`,可用 `--format` 显式覆盖,未知扩展名回落 Markdown);文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`、`page.html → page_zh.html`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器;`txt2zh` 为同一入口的命令别名。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
-![Version](https://img.shields.io/badge/version-0.5.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-164%20passed-brightgreen)
+![Version](https://img.shields.io/badge/version-0.6.0-brightgreen)
+![Tests](https://img.shields.io/badge/tests-247%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -26,8 +26,9 @@
 
 ## 特性
 
-- 🔒 **代码零泄露**:代码块与行内代码经占位符物理隔离,内容绝不发送给翻译 API
-- 📐 **格式保真**:frontmatter(仅译 value,key 与 `---` 标记由提示词约束保持)、链接 url、表格行列均与原文一致;CRLF/LF 行尾按源文件原样保持(stdin 模式输出 LF)
+- 🧩 **多格式支持**:Markdown / HTML / TXT 按扩展名自动推断(`.md/.markdown`、`.html/.htm`、`.txt`;未知扩展名回落 Markdown,非 .md 文件不再拒绝),`--format` 显式覆盖;`txt2zh` 命令别名
+- 🔒 **代码零泄露**:代码块与行内代码经占位符物理隔离,内容绝不发送给翻译 API;HTML 同理——标签、属性、注释、实体与 `script/style/pre/code` 原始块对模型不可见,只翻译文本节点
+- 📐 **格式保真**:frontmatter(仅译 value,key 与 `---` 标记由提示词约束保持)、链接 url、表格行列均与原文一致;HTML 标签/属性/实体还原与源文逐字节相同;CRLF/LF 行尾按源文件原样保持(stdin 模式输出 LF)
 - 🔁 **校验与可选修复**:块级校验失败时打印警告并采用译文(不回退原文);可选 `--repair N`(0-2,默认 0)自动重译,全程无需人工干预
 - 📄 **长文档可靠**:≤15000 字符整文一次调用(术语天然一致);超长文档按逻辑边界分段,每段附前段上下文保证术语延续,超限块自动放大输出预算
 - 📚 **术语表**:支持自定义术语对照,缺省自动加载用户配置目录默认术语表
@@ -47,7 +48,7 @@ cd bilibli-translator
 python -m pip install -e ".[dev]"
 ```
 
-安装后命令行入口为 `md2zh`。
+安装后命令行入口为 `md2zh`(同一入口的别名 `txt2zh`)。
 
 ## 快速开始
 
@@ -55,7 +56,14 @@ python -m pip install -e ".[dev]"
 # 翻译单个文件 → 同目录生成 ABC_zh.md
 md2zh ABC.md
 
-# 批量翻译:list.txt 每行一个 md 文件,# 开头的行与空行被忽略
+# 翻译 HTML / TXT 文件(格式按扩展名推断)→ 同目录生成 page_zh.html / note_zh.txt
+md2zh page.html
+md2zh note.txt
+
+# txt2zh 命令别名(与 md2zh 同一入口)
+txt2zh note.txt
+
+# 批量翻译:list.txt 每行一个文件,# 开头的行与空行被忽略
 md2zh --filelist list.txt
 # .translateignore 中列出的文件在批量模式下略过(每行一个路径或通配模式,# 注释)
 
@@ -76,6 +84,9 @@ md2zh ABC.md --ollama
 
 # 管道过滤器:stdin 读入,译文写 stdout
 cat ABC.md | md2zh -
+
+# 管道过滤器:stdin 无扩展名,输入格式用 --format 指定
+cat page.html | md2zh - --format html
 ```
 
 单文件失败时返回具体退出码;批量模式下单个文件失败不中断,结束时在 stderr 汇总 `成功 N,跳过 M,忽略 L,失败 K`,存在失败则退出码为 1。
@@ -86,6 +97,9 @@ cat ABC.md | md2zh -
 
 - 代码块与行内代码不翻译(占位符保护,内容不会发送给 API);
 - 译文格式与原文一致:frontmatter 的 key 与 `---` 标记由提示词约束保持、链接 url 原样保留、表格行列不变;
+- 格式按扩展名推断(`.md/.markdown → Markdown`、`.html/.htm → HTML`、`.txt → 纯文本`),未知扩展名回落 Markdown;`--format md|html|txt` 显式覆盖推断;
+- stdin 模式无扩展名,缺省 Markdown;`--filelist` 批量模式显式 `--format` 全局覆盖、缺省逐文件推断,同一列表可混合多种格式;
+- HTML 仅翻译文本节点:标签、属性、注释、doctype、实体与 `script/style/pre/code` 原始块经占位符隔离后不发送给模型,译文中还原为源文字节;TXT 零保护、空行分段;
 - 校验失败输出警告并采用译文,可用 `--repair N` 开启重译(文件仍算成功生成);
 - stdout 只输出数据:文件/批量模式输出成功译文路径(每行一个),stdin 模式输出译文正文;进度、跳过/忽略提示、警告、汇总全部走 stderr;
 - 错误消息格式:`md2zh: 上下文: 信息`;用户可见错误不打印 Python 堆栈;
@@ -155,12 +169,12 @@ POST http://localhost:11434/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(164 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(247 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
 - 开发依赖仅 `pytest`;测试与实现遵循严格 TDD;
-- 真实 API 不进自动化测试(免费公共服务,避免限流),手工验证步骤见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;
+- 真实 API 不进自动化测试(免费公共服务,避免限流),手工验证步骤见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13(多格式:`2026-10-15-multiformat-html-txt-design.md` §6);
 - 目录约定:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`。
 
 ## 参与贡献
@@ -175,10 +189,11 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 
 ```
 ├── README.md / CHANGELOG.md / LICENSE / CLAUDE.md / pyproject.toml
-├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析)
+├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析与共享分段)
 │                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
-├── tests/              # 164 项测试,API 全 mock
-├── data/sample_en.md   # 手工验证样例
+│                       # formats(格式注册表) / html(HTML 适配器) / txt(TXT 适配器)
+├── tests/              # 247 项测试,API 全 mock
+├── data/               # 手工验证样例(sample_en.md/html/txt)
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)
 ```
@@ -192,13 +207,16 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 - 忽略列表通配匹配:`**` 与段内 `*` 语义同 gitignore 子集;无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`),损害有界(多跳过可在 stderr 审计)。
 - 批量模式 Ctrl-C/下游管道关闭后,运行中的请求至多延续「重试×超时」(最坏约 6 分钟)进程才退出;未启动任务会被取消。
 - `--ollama` 本地后端:模型 thinking 输出计入输出预算(max_tokens),超长输出可能被静默截断;120s 超时对本地慢速推理余量有限;代理环境下 localhost 请求未豁免 HTTP_PROXY(需直连时自行设置 no_proxy)。
+- 多格式(HTML):HTML 属性(alt/title/placeholder)不译,`lang`/`meta` 不改写;HTML5 双重转义态(如 script 内 `<!--<script>`)与 textarea/title 的 RCDATA 语义不特判,CDATA 内含 `>` 在首个 `>` 处截断;正文以 `<`+字母 开头(如 `<apple`)会被当作标签误保护、该段不翻译;畸形 HTML(未闭合标签/引号)余文按原文输出(往返仍恒等)。
+- 多格式(通用):模型可能自造 `**` 等非 HTML 格式标记(提示词硬约束缓解,块级校验无法拦截);源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍);minified HTML 依赖占位符令牌边界分段,超长单块保持完整并按块长缩放输出预算。
+- 格式推断:未知扩展名按 Markdown 处理;`txt2zh` 调用的 stderr 前缀仍为 `md2zh:`;批量模式无法逐文件指定格式(显式 `--format` 全局覆盖,混合格式列表交由扩展名推断)。
 
 ## 参考
 
 - 代码仓库:https://github.com/wzlu/bilibli-translator
 - 变更日志:`CHANGELOG.md`
-- 设计规格:`docs/superpowers/specs/2026-10-12-md2zh-translator-design.md`(批量多线程:`2026-10-13-filelist-multithreading-design.md`;本地 ollama 后端:`2026-10-13-ollama-local-backend-design.md`)
-- 实施计划:`docs/superpowers/plans/2026-10-12-md2zh-translator.md`(批量多线程:`2026-10-13-filelist-multithreading.md`;本地 ollama 后端:`2026-10-13-ollama-local-backend.md`)
+- 设计规格:`docs/superpowers/specs/2026-10-12-md2zh-translator-design.md`(批量多线程:`2026-10-13-filelist-multithreading-design.md`;本地 ollama 后端:`2026-10-13-ollama-local-backend-design.md`;多格式支持:`2026-10-15-multiformat-html-txt-design.md`)
+- 实施计划:`docs/superpowers/plans/2026-10-12-md2zh-translator.md`(批量多线程:`2026-10-13-filelist-multithreading.md`;本地 ollama 后端:`2026-10-13-ollama-local-backend.md`;多格式支持:`2026-10-15-multiformat-html-txt.md`)
 - API 参考实现:`references/call_api.py`
 
 ## 许可证

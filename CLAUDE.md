@@ -2,23 +2,28 @@
 
 ## Overview
 
-将英文 Markdown 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。亦支持本地 ollama 离线翻译(`--ollama`)。文件模式译文保存于原文件同目录,命名为 `*_zh.md`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器)。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.5.0。
+将英文 Markdown / HTML / TXT 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown→md`、`.html/.htm→html`、`.txt→txt`,未知扩展名回落 md),可用 `--format` 显式覆盖;文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器);`txt2zh` 为同一入口的命令别名。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.6.0。
 
 ## Architecture
 
-六模块分层(职责边界严格,不跨层):
+九模块分层(职责边界严格,不跨层):
 
-- `cli.py` — 参数解析(用法错误退出 64)、`-` 路由到 stdin 模式、退出码映射、main 入口(SIGINT/SIGPIPE 捕获)
-- `translator.py` — 编排层:单文件全流程、修复循环、批量处理、stdin 模式(run_stdin)、原子写;退出码常量全 CLI 唯一出处
-- `api.py` — 术语表加载、提示词构建、流式翻译请求与重试(运行期依赖仅 `requests`)
-- `markdown.py` — 纯文本块解析:frontmatter 拆分、代码块/行内代码占位符保护、逻辑分段
-- `checks.py` — 纯函数块级校验:链接、表格、占位符
+- `cli.py` — 参数解析(用法错误退出 64)、`-` 路由到 stdin 模式、退出码映射、main 入口(SIGINT/SIGPIPE 捕获);`--format` 选项与 `txt2zh` 别名程序名显示
+- `translator.py` — 编排层:单文件全流程、修复循环、批量处理、stdin 模式(run_stdin)、原子写;退出码常量全 CLI 唯一出处;调用点按格式注册表分派(`fmt=None` 回落 md)
+- `api.py` — 术语表加载、按格式注入约束的提示词构建、流式翻译请求与重试(运行期依赖仅 `requests`)
+- `formats.py` — 格式注册表:Format(frozen dataclass:split_frontmatter/protect/restore/chunk_text/validators/constraints)与 md/html/txt 三条目;`infer_format` 按扩展名推断、未知回落 md
+- `html.py` — HTML 适配器:引号感知状态机单遍扫描,标签/属性/注释/doctype/实体/script·style·pre·code 原始块占位保护(令牌 `@@@HTMLBLOCK_n@@@`/`@@@HTMLTAG_n@@@`/`@@@HTMLENT_n@@@`),还原字节级保真
+- `txt.py` — TXT 适配器:零保护直通、空行分段
+- `markdown.py` — Markdown 适配实现与共享分段工具:frontmatter 拆分、代码块/行内代码占位符保护、逻辑分段;`pack_blocks`/`split_blank_lines`/朴素还原供 html/txt 单向复用
+- `checks.py` — 纯函数块级校验:链接、表格、占位符、HTML 文本(模型自造标签/实体计数)
 - `ignore.py` — 忽略列表解析与通配匹配(精确路径 + `**`/段内通配,UTF-8-sig→GBK 回退)
 
 **核心设计决策:**
 
 - **代码块物理隔离**:围栏/行内代码以 `@@@CODEBLOCK_n@@@` / `@@@INLINE_n@@@` 占位符替换后才发送 API,模型看不到代码内容
 - **链接 URL 物理隔离**:[显示文本](url) 的 url 以 `@@@URL_n@@@` 占位符替换后才发送 API,模型不可见,还原时拼回
+- **格式注册表与分派**:Format 适配面(md/html/txt 三条目)统一保护/还原/分段/校验/提示词约束;translator 调用点改派 `fmt.split_frontmatter/protect/restore/chunk_text/validators/constraints`;`api.build_prompt` 按格式注入约束(缺省回落 `markdown.CONSTRAINTS`,默认输出与既有逐字节一致);内部函数 `fmt=None` 回落 md,CLI `--format` 显式覆盖推断,批量模式缺省逐文件推断
+- **HTML 状态机占位保护**:引号感知单遍扫描——标签内引号含 `>` 不误切,script/style/pre/code 原始块整体保护至首个 `</name`(不区分大小写),字面 `<` 与未知实体不误判,命名实体按 `html.entities.html5` 最长匹配;保护顺序 块→标签→实体 保证 mapping 值不含令牌,朴素顺序 replace 还原往返字节级安全;不引入解析器、不重序列化(spike 实证:正则与 html.parser 方案均被否决)
 - **单次调用为主**:可译文本 ≤ 15000 字符整文一次流式调用(术语天然一致);超长按逻辑边界分段(≤3000 字符/段,附前段上下文参考保证术语延续;上下文发送前还原占位符,占位符令牌不进 API 请求),不可分割的超限块按块长缩放输出预算
 - **四重格式保障**:占位符隔离 + 提示词格式约束 + 块级校验 + 可选自动修复循环(--repair 默认关闭;校验失败一律采用译文并警告,不回退原文)
 - **frontmatter 独立翻译**:仅译 value,key 与 `---` 标记由提示词约束保持,不校验、不重译、不回退
@@ -41,8 +46,8 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(164 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
-- **真实 API 不进自动化测试**;手工验证清单见 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13
+- 测试:`python -m pytest -v`(247 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- **真实 API 不进自动化测试**;手工验证清单见各版规格(md 基线 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;多格式 `2026-10-15-multiformat-html-txt-design.md` §6)
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
 - 提交信息以 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 结尾
@@ -63,10 +68,12 @@ POST {api_base}/chat/completions   # 默认 https://index-translate.bilibili.com
 **CLI 接口:**
 
 ```
-md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
-  --filelist LIST   文件列表(每行一个 md 文件,# 注释行忽略)
+md2zh FILE | md2zh - | md2zh --filelist LIST [选项]   # txt2zh 为同一入口的别名
+  FILE              .md/.markdown/.html/.htm/.txt(格式按扩展名推断,可被 --format 覆盖)
+  --format FMT      输入格式 md/html/txt(默认按扩展名推断;stdin 模式缺省 md;批量模式显式值全局覆盖)
+  --filelist LIST   文件列表(每行一个文件,# 注释行忽略)
   -c/--max-threads N   --filelist 模式最大线程数(默认 10;仅批量生效)
-  --force           覆盖已存在的 *_zh.md(默认跳过)
+  --force           覆盖已存在的 *_zh.<原扩展名>(默认跳过)
   --repair N        校验失败后的重译次数 0-2(默认 0;失败一律采用译文)
   --glossary FILE   术语表 JSON 文件(缺省加载用户配置目录默认文件)
   --api-base URL    默认 https://index-translate.bilibili.com/v1
@@ -85,15 +92,17 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]
 
 ```
 ├── CLAUDE.md / README.md / CHANGELOG.md / LICENSE / pyproject.toml / .gitignore
-├── src/md2zh/           # 六模块实现(__init__.py 存版本号)
-├── tests/               # pytest:test_markdown / test_checks / test_api / test_translator / test_cli / test_version / test_ignore
-├── data/sample_en.md    # 手工验证样例(真实 API 产物 *_zh.md 不入库)
+├── src/md2zh/           # 九模块实现(__init__.py 存版本号)
+├── tests/               # pytest:test_markdown / test_checks / test_api / test_translator / test_cli / test_version / test_ignore / test_formats / test_html / test_txt
+├── data/                # 手工验证样例(sample_en.md/html/txt;真实 API 产物 *_zh.* 不入库)
 ├── reports/             # 测试报告(生成物,gitignore)
 ├── docs/superpowers/    # specs/(规格) 与 plans/(实施计划)
 └── references/call_api.py   # Bilibili 官方参考实现,保持不动
 ```
 
-## Recent Updates (Updated: 2026-10-13)
+## Recent Updates (Updated: 2026-10-15)
+
+v0.6.0 多格式支持(HTML/TXT):74e59b3..cfb12f4 共 13 个提交(规格 + 计划 + 任务 1-5 实施与审查修复),本提交为样例与文档同步;247/247 测试通过。CLI 从仅 .md 扩展为多格式翻译工具:格式按扩展名推断(`.md/.markdown`、`.html/.htm`、`.txt`;未知扩展名回落 md,非 .md 文件不再拒绝),新增 `--format md|html|txt` 显式覆盖(stdin 模式缺省 md;批量模式显式值全局覆盖、缺省逐文件推断)与 `txt2zh` 命令别名(同一入口,usage/--version 随入口名显示,非别名回落 md2zh)。新增格式注册表(formats.py)与 HTML/TXT 适配器:HTML 经引号感知状态机单遍扫描——标签/属性/注释/doctype/实体与 script/style/pre/code 原始块占位隔离(还原字节级保真,不引入解析器),校验新增 `check_html_text`;提示词约束按格式分派(md 默认输出逐字节不变);共享分段工具抽取(pack_blocks/split_blank_lines);translator/api 按 `fmt` 贯穿分派(内部缺省回落 md)。实施与审查期修复:块级译文首尾空白回挂(原仅末尾,HTML 令牌边界分段暴露块首空白丢失)、`_find_close` 改定宽切片比较(修复 `text.lower()` 偏移错位致静默 HTML 损坏)。保护机制经 spike 实证(正则与 html.parser 方案否决,自研状态机 16/16 陷阱语料 + CRLF 页面全 PASS)。待合并回 main 并打 tag v0.6.0;真实 API 手工验证(规格 §6 清单 6 项)待发布门槛执行,结果回填本节。
 
 v0.5.0 `--ollama` 本地后端:dfd1e91..77f02a9 共 10 个提交(规格 + 计划 + 任务 1-4 实施 + 终审修复波与口径同步),164/164 测试通过。新增 `--ollama`:改用本地 ollama 的 OpenAI 兼容端点(`http://localhost:11434/v1`,模型 `index-translate-9b:latest`)离线翻译,api 层按标志省略 B 站特有的 `chat_template_kwargs` 与 User-Agent 要求;`ollama` 布尔标志经 cli→translator→api 贯穿(translator 线程池逻辑不变);cli 层冲突检测:与显式 `--api-base`/`--model`/`-c N(N≠1)` 冲突报错退出 64(`-c 1` 合法),并在 CLI 层强制单线程(`max_threads=1`)。终审修复波:边界透传守卫测试(frontmatter+分段长文)、`-c N≠1` 冲突语义(用户裁决)、文档回填与 .gitignore 真实 API 产物忽略。已 fast-forward 合并回 main,已推送 origin 并打 tag v0.5.0。真实 ollama 手工验证:规格 §6 全部 6 项实测完成。第 1/2/4/6 项(单文件 34s、stdin 17s、三组冲突均退出 64、无 @@@ 与 </think> 残留);真实 README 单文件复验(译文 8.8KB)0 警告、退出 0,总耗时 >120s 未触发超时——120s 为单次请求上限,首次调用含模型加载,超时风险集中于单个超限块的单次推理(实测未见);第 3 项 filelist 批量:3 文件 31s 全部成功、单线程顺序输出、汇总「成功 3」零警告、译文无残留;第 5 项停服:终止 ollama 进程后运行,重试耗尽退出 75(13s,stderr 报 WinError 10061 连接拒绝),服务恢复后连通正常。
 
@@ -127,6 +136,7 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - v0.3.0 已知限制(终审分流随行发布):`repair` 为负值的库级误用会静默产出空译文(CLI `choices` 已拦截,仅直接库调用可达);校验失败被采用的块可能残留字面 `@@@...@@@` 令牌(不回退语义的既定取舍,实测无残留);stdin/批量模式的 `repair` 透传无经 `main()` 的专属测试(与文件模式同构,行为经代码核验与 file 模式测试覆盖)
 - v0.4.0 已知限制(终审随行发布):批量模式 Ctrl+C/下游管道关闭后,运行中的请求至多延续重试×超时(最坏约 6 分钟)进程才退出(未启动任务已取消,`test_run_batch_broken_pipe_cancels_pending` 锁定该语义);`-c` 无上界(线程按文件数懒创建,用户自限);批量译文路径完成即输出、顺序不定(按设计);两个时序测试依赖 0.5s/0.05s 时差(10 倍余量,复跑稳定);真实 API 复验实测 3/117 块「占位符丢失」(INLINE 令牌,采用译文并警告,不回退语义既定取舍)
 - v0.5.0 已知限制(终审观察项随行发布):本地 ollama 模型 thinking 输出会消耗 max_tokens 预算(超长输出可能被静默截断,finish_reason 未检测);120s 超时对本地慢速推理余量有限;代理环境下 localhost 请求未豁免 HTTP_PROXY(如需直连需自行设置 no_proxy)。均为本地后端边缘行为,损害有界
+- v0.6.0 已知限制(终审随行发布):HTML 属性(alt/title/placeholder)不译,`lang`/`meta` 不改写;HTML5 双重转义态(如 script 内 `<!--<script>`)与 textarea/title 的 RCDATA 语义不特判,CDATA 内含 `>` 在首个 `>` 截断;正文以 `<`+字母 开头(如 `<apple`)误判为标签,最坏该段误保护不翻译;畸形 HTML(未闭合标签/引号)余文按原文输出(往返仍恒等);模型可能自造 `**` 等非 HTML 格式标记(提示词硬约束缓解,校验无法拦截);源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍);minified HTML 依赖占位符令牌边界分段,超长单块保持完整(按块长缩放输出预算);未知扩展名回落 md;`txt2zh` 调用的 stderr 前缀仍为 `md2zh:`;库级 fmt 非法值仅库调用可达
 - 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
 - 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.5.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
