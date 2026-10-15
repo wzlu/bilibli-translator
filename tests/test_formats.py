@@ -41,7 +41,10 @@ def test_get_format_html_entry():
 
 def test_get_format_txt_entry():
     fmt = formats.get_format("txt")
+    assert fmt.split_frontmatter is txt.split_frontmatter
     assert fmt.protect is txt.protect
+    assert fmt.restore is txt.restore
+    assert fmt.chunk_text is txt.chunk_text
     assert fmt.validators == (checks.check_placeholders,)
     assert fmt.constraints == txt.CONSTRAINTS
 

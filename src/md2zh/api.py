@@ -68,8 +68,7 @@ def build_prompt(text: str, glossary: list[str], fix_notes: str = "", context: s
     constraints 缺省回落 markdown.CONSTRAINTS(保持既有默认行为);
     各格式经 formats 注册表传入自己的约束文本。
     """
-    if constraints is None:
-        constraints = list(markdown.CONSTRAINTS)
+    constraints = list(constraints) if constraints is not None else list(markdown.CONSTRAINTS)
     _append_requirements(constraints, glossary, fix_notes)
     if context:
         # 上下文仅供术语参考:硬性禁止输出上下文内容,防止模型把参考段带入译文

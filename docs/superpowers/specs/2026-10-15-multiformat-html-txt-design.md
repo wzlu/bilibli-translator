@@ -166,7 +166,7 @@ infer_format(path) -> str           # 扩展名小写映射,未知回落 "md"
 - HTML 属性(alt/title/placeholder)不译;`lang`/`meta` 不改写。
 - HTML5 双重转义态(`<!--<script>` 在 script 内不闭合)不实现;CDATA 内含 `>` 在首个 `>` 截断;textarea/title 的 RCDATA 语义不特判。
 - 正文以 `<`+字母 开头误判为标签(如 "<apple")——最坏该段误保护不翻译。
-- 畸形 HTML(未闭合标签/引号):余文按原文输出,往返仍恒等。
+- 畸形 HTML(未闭合标签/引号):余文不保护地进入送译文本(protect→restore 往返恒等;译文若改写余文将触发裸字符校验警告)。
 - 模型可能自造 `**` 等非 HTML 格式标记,校验无法拦截(提示词硬约束缓解)。
 - 源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍)。
 - 未知扩展名回落 md;txt2zh 调用的 stderr 前缀仍为 `md2zh:`;库级 fmt 非法值仅库调用可达。

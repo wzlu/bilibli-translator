@@ -64,7 +64,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "  {prog} ABC.md                      翻译单个 Markdown 文件,生成 ABC_zh.md\n"
         "  {prog} page.html                  翻译 HTML 文件(格式按扩展名推断)\n"
         "  {prog} note.txt                   翻译纯文本文件(格式按扩展名推断)\n"
-        "  txt2zh note.txt                  txt2zh 别名(等价 {prog} --format txt)\n"
+        "  txt2zh note.txt                  txt2zh 别名(同一入口,格式按扩展名/--format 决定)\n"
         "  {prog} --filelist list.txt        批量翻译(每行一个文件,# 开头忽略)\n"
         "  {prog} --filelist list.txt -c 5    批量翻译,最多 5 个线程并行(默认 10)\n"
         "  {prog} ABC.md --force              覆盖已存在的译文\n"
