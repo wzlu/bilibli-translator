@@ -425,7 +425,7 @@ def test_run_batch_ignored_and_failed_returns_1(monkeypatch, tmp_path, capsys):
     assert "汇总: 成功 0,跳过 0,忽略 1,失败 1" in capsys.readouterr().err
 
 
-def test_run_batch_ignore_wins_over_force(monkeypatch, tmp_path):
+def test_run_batch_ignore_wins_over_force(monkeypatch, tmp_path, capsys):
     # --force 不覆盖忽略:被忽略文件即使已有译文也不翻译
     p = tmp_path / "a.md"
     p.write_text("# Hi", encoding="utf-8")
@@ -444,6 +444,7 @@ def test_run_batch_ignore_wins_over_force(monkeypatch, tmp_path):
                               api_base="http://x", model="m", ignore_matcher=matcher)
     assert rc == translator.EX_OK
     assert calls["n"] == 0
+    assert "汇总: 成功 0,跳过 0,忽略 1,失败 0" in capsys.readouterr().err
 
 
 def test_run_batch_existing_translation_skipped_upfront(monkeypatch, tmp_path, capsys):

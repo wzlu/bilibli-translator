@@ -274,7 +274,7 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
     ok = skipped = ignored = failed = 0
     todo: list[str] = []
     for p in paths:
-        # 前置判断顺序:译文已存在(非 force)→ 忽略名单 → 提交线程池
+        # 前置判断顺序:译文已存在(非 force)→ 忽略列表 → 提交线程池
         if not force and os.path.exists(_zh_path(p)):
             _warn(f"md2zh: 跳过 {p}: 译文已存在(使用 --force 覆盖)")
             skipped += 1
