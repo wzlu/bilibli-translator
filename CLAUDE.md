@@ -2,7 +2,7 @@
 
 ## Overview
 
-将英文 Markdown / HTML / TXT 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown→md`、`.html/.htm→html`、`.txt→txt`,未知扩展名回落 md),可用 `--format` 显式覆盖;文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器);`txt2zh` 为同一入口的命令别名。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.6.0。
+将英文 Markdown / HTML / TXT 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown→md`、`.html/.htm→html`、`.txt→txt`,未知扩展名回落 md),可用 `--format` 显式覆盖;文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器);`txt2zh` 为同一入口的命令别名。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.7.0。
 
 ## Architecture
 
@@ -46,7 +46,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(247 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(252 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见各版规格(md 基线 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;多格式 `2026-10-15-multiformat-html-txt-design.md` §6)
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -100,7 +100,9 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]   # txt2zh 为同一入口
 └── references/call_api.py   # Bilibili 官方参考实现,保持不动
 ```
 
-## Recent Updates (Updated: 2026-10-15)
+## Recent Updates (Updated: 2026-10-22)
+
+v0.7.0 批量前置判断顺序优化:6028b50..ea9f092 共 6 个提交(规格 + 计划 + 任务 1-3 实施 + 终审修复波),本提交为发布文档与版本号同步;252/252 测试通过。`run_batch` 前置判断顺序改为「译文已存在(非 `--force`)→ 忽略名单 → 提交线程池」:已存在译文的文件在主线程 1 次 stat 即跳过,不再做忽略匹配与线程池提交(重跑场景效率与命中率分布对齐);`translate_file` 保持不动(worker 内双查防 TOCTOU、供 run_single 复用)。语义变更(用户裁决):交叉情形(译文已存在且命中忽略,非 force)由计「忽略」改为计「跳过」;跳过警告由随完成乱序改为前置按文件列表顺序;源文件已删但译文存在由「失败(66)」改为「跳过」。终审修复波:锁定 `--force` 忽略优先的汇总断言、术语统一为「忽略列表」。真实 API 手工验证(增量重跑场景)5/5 实测完成:①首轮批量 2/2 成功;②重跑跳过 2/2(跳过警告前置按序输出,退出 0);③交叉情形(译文已存在且命中忽略)计「跳过 1、忽略 0」;④`--force` 重译成功;⑤`--force` 下忽略优先不变(命中忽略文件仍计「忽略」)。发布门槛通过。
 
 v0.6.0 多格式支持(HTML/TXT):74e59b3..6a38b20 共 17 个提交(规格 + 计划 + 任务 1-6 实施与审查修复 + 终审修复波 + 验证结果回填),247/247 测试通过(含合并结果复验)。CLI 从仅 .md 扩展为多格式翻译工具:格式按扩展名推断(`.md/.markdown`、`.html/.htm`、`.txt`;未知扩展名回落 md,非 .md 文件不再拒绝),新增 `--format md|html|txt` 显式覆盖(stdin 模式缺省 md;批量模式显式值全局覆盖、缺省逐文件推断)与 `txt2zh` 命令别名(同一入口,usage/--version 随入口名显示,非别名回落 md2zh)。新增格式注册表(formats.py)与 HTML/TXT 适配器:HTML 经引号感知状态机单遍扫描——标签/属性/注释/doctype/实体与 script/style/pre/code 原始块占位隔离(还原字节级保真,不引入解析器),校验新增 `check_html_text`;提示词约束按格式分派(md 默认输出逐字节不变);共享分段工具抽取(pack_blocks/split_blank_lines);translator/api 按 `fmt` 贯穿分派(内部缺省回落 md)。实施与审查期修复:块级译文首尾空白回挂(原仅末尾,HTML 令牌边界分段暴露块首空白丢失)、`_find_close` 改定宽切片比较(修复 `text.lower()` 偏移错位致静默 HTML 损坏)。保护机制经 spike 实证(正则与 html.parser 方案否决,自研状态机 16/16 陷阱语料 + CRLF 页面全 PASS)。已 fast-forward 合并回 main、功能分支已删除,终审修复波闭环,已推送 origin 并打 tag v0.6.0。真实 API 手工验证(规格 §6 全部 6 项)实测完成:①HTML 单文件——标签/属性/实体字节级完好(`title="a &gt; b example"`、`href="/docs?a=1&b=2"` 原样)、script/style/pre 原样、文本节点全译、0 警告、无 @@@ 残留;②TXT 直通正确(术语 API/SDK 保留);③stdin `--format html` 退出 0、stderr 空、输出与文件模式一致;④重装后 `txt2zh --version` = `txt2zh 0.6.0`;⑤混合格式批量(md/html/txt)3/3 成功、退出 0、乱序输出、零警告;⑥md 回归 0 警告。发布门槛通过。
 
@@ -136,6 +138,7 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - v0.3.0 已知限制(终审分流随行发布):`repair` 为负值的库级误用会静默产出空译文(CLI `choices` 已拦截,仅直接库调用可达);校验失败被采用的块可能残留字面 `@@@...@@@` 令牌(不回退语义的既定取舍,实测无残留);stdin/批量模式的 `repair` 透传无经 `main()` 的专属测试(与文件模式同构,行为经代码核验与 file 模式测试覆盖)
 - v0.4.0 已知限制(终审随行发布):批量模式 Ctrl+C/下游管道关闭后,运行中的请求至多延续重试×超时(最坏约 6 分钟)进程才退出(未启动任务已取消,`test_run_batch_broken_pipe_cancels_pending` 锁定该语义);`-c` 无上界(线程按文件数懒创建,用户自限);批量译文路径完成即输出、顺序不定(按设计);两个时序测试依赖 0.5s/0.05s 时差(10 倍余量,复跑稳定);真实 API 复验实测 3/117 块「占位符丢失」(INLINE 令牌,采用译文并警告,不回退语义既定取舍)
 - v0.5.0 已知限制(终审观察项随行发布):本地 ollama 模型 thinking 输出会消耗 max_tokens 预算(超长输出可能被静默截断,finish_reason 未检测);120s 超时对本地慢速推理余量有限;代理环境下 localhost 请求未豁免 HTTP_PROXY(如需直连需自行设置 no_proxy)。均为本地后端边缘行为,损害有界
+- v0.7.0 已知限制(终审随行发布):目录名恰好为 `*_zh.<扩展名>`(如 `a_zh.md` 是目录)时,前置 exists 会将其误判为已存在译文而跳过(§4.3.3 同型病理,重命名目录即恢复);跳过警告在批量模式统一前置输出,不再与完成输出交错(按设计)
 - v0.6.0 已知限制(终审随行发布):HTML 属性(alt/title/placeholder)不译,`lang`/`meta` 不改写;HTML5 双重转义态(如 script 内 `<!--<script>`)与 textarea/title 的 RCDATA 语义不特判,CDATA 内含 `>` 在首个 `>` 截断;正文以 `<`+字母 开头(如 `<apple`)误判为标签,最坏该段误保护不翻译;畸形 HTML(未闭合标签/引号)余文不保护地进入送译文本(protect→restore 往返恒等;译文若改写余文将触发裸字符校验警告);模型可能自造 `**` 等非 HTML 格式标记(提示词硬约束缓解,校验无法拦截);源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍);minified HTML 依赖占位符令牌边界分段,超长单块保持完整(按块长缩放输出预算);未知扩展名回落 md;`txt2zh` 调用的 stderr 前缀仍为 `md2zh:`;库级 fmt 非法值仅库调用可达
 - 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略

@@ -410,7 +410,7 @@ def test_prog_follows_argv0(monkeypatch, capsys):
     with pytest.raises(SystemExit) as e:
         cli.main(["--version"])
     assert e.value.code == 0
-    assert "txt2zh 0.6.0" in capsys.readouterr().out
+    assert "txt2zh 0.7.0" in capsys.readouterr().out
     with pytest.raises(SystemExit) as e:
         cli.main(["--format", "xml", "a.md"])
     assert e.value.code == translator.EX_USAGE
