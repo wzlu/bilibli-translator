@@ -506,6 +506,42 @@ def test_run_batch_existing_translation_not_submitted(monkeypatch, tmp_path):
     assert submitted == [str(fresh)]
 
 
+def test_run_batch_source_gone_translation_exists_skipped(tmp_path, capsys):
+    # 源文件已删但译文存在:前置 exists 短路 → 计「跳过」(不再计失败)
+    (tmp_path / "a_zh.md").write_text("已有", encoding="utf-8")
+    rc = translator.run_batch([str(tmp_path / "a.md")], force=False, glossary=[],
+                              api_base="http://x", model="m")
+    assert rc == translator.EX_OK
+    assert "汇总: 成功 0,跳过 1,忽略 0,失败 0" in capsys.readouterr().err
+
+
+def test_run_batch_skip_warn_precedes_workers(monkeypatch, tmp_path):
+    # 跳过警告在主线程前置输出,先于任何线程池工作发生
+    src = tmp_path / "a.md"
+    src.write_text("# Hi", encoding="utf-8")
+    (tmp_path / "a_zh.md").write_text("已有", encoding="utf-8")
+    fresh = tmp_path / "b.md"
+    fresh.write_text("# Hi", encoding="utf-8")
+    order: list[tuple[str, str]] = []
+    real_warn = translator._warn
+
+    def fake_warn(msg):
+        order.append(("warn", msg))
+        real_warn(msg)
+
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
+        order.append(("translate", src_path))
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "_warn", fake_warn)
+    monkeypatch.setattr(translator, "translate_file", fake)
+    translator.run_batch([str(src), str(fresh)], force=False, glossary=[],
+                         api_base="http://x", model="m", max_threads=2)
+    skip_idx = order.index(("warn", f"md2zh: 跳过 {src}: 译文已存在(使用 --force 覆盖)"))
+    translate_idx = order.index(("translate", str(fresh)))
+    assert skip_idx < translate_idx
+
+
 def test_document_frontmatter_no_repair_warning(monkeypatch, capsys):
     # frontmatter 不再校验:经 _translate_document 无重译、无警告,译文直接采用
     outputs = iter(["---\n标题: 你好\n---"] * 3 + ["正文译文"])
