@@ -446,6 +446,66 @@ def test_run_batch_ignore_wins_over_force(monkeypatch, tmp_path):
     assert calls["n"] == 0
 
 
+def test_run_batch_existing_translation_skipped_upfront(monkeypatch, tmp_path, capsys):
+    # 译文已存在 + 非 force:主线程前置跳过,translate_file 不被调用
+    src = tmp_path / "a.md"
+    src.write_text("# Hi", encoding="utf-8")
+    (tmp_path / "a_zh.md").write_text("已有", encoding="utf-8")
+
+    def fake(src_path, **k):
+        raise AssertionError(f"已有译文不应提交翻译: {src_path}")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    rc = translator.run_batch([str(src)], force=False, glossary=[],
+                              api_base="http://x", model="m")
+    assert rc == translator.EX_OK
+    captured = capsys.readouterr()
+    assert "md2zh: 跳过 " in captured.err
+    assert "汇总: 成功 0,跳过 1,忽略 0,失败 0" in captured.err
+
+
+def test_run_batch_existing_translation_wins_over_ignore(monkeypatch, tmp_path, capsys):
+    # 交叉情形:译文已存在且命中忽略 → 计「跳过」不计「忽略」(非 force)
+    src = tmp_path / "a.md"
+    src.write_text("# Hi", encoding="utf-8")
+    (tmp_path / "a_zh.md").write_text("已有", encoding="utf-8")
+    ti = tmp_path / ".translateignore"
+    ti.write_text(str(src) + "\n", encoding="utf-8")
+    matcher = ignore.load_ignore(str(ti))
+
+    def fake(src_path, **k):
+        raise AssertionError(f"已有译文不应提交翻译: {src_path}")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    rc = translator.run_batch([str(src)], force=False, glossary=[],
+                              api_base="http://x", model="m", ignore_matcher=matcher)
+    assert rc == translator.EX_OK
+    captured = capsys.readouterr()
+    assert "md2zh: 跳过 " in captured.err
+    assert "md2zh: 忽略 " not in captured.err
+    assert "汇总: 成功 0,跳过 1,忽略 0,失败 0" in captured.err
+
+
+def test_run_batch_existing_translation_not_submitted(monkeypatch, tmp_path):
+    # 混合列表:仅无译文文件进入线程池
+    src = tmp_path / "a.md"
+    src.write_text("# Hi", encoding="utf-8")
+    (tmp_path / "a_zh.md").write_text("已有", encoding="utf-8")
+    fresh = tmp_path / "b.md"
+    fresh.write_text("# Hi", encoding="utf-8")
+    submitted: list[str] = []
+
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
+        submitted.append(src_path)
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    rc = translator.run_batch([str(src), str(fresh)], force=False, glossary=[],
+                              api_base="http://x", model="m", max_threads=2)
+    assert rc == translator.EX_OK
+    assert submitted == [str(fresh)]
+
+
 def test_document_frontmatter_no_repair_warning(monkeypatch, capsys):
     # frontmatter 不再校验:经 _translate_document 无重译、无警告,译文直接采用
     outputs = iter(["---\n标题: 你好\n---"] * 3 + ["正文译文"])

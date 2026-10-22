@@ -267,13 +267,18 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
               fmt: str | None = None) -> int:
     """批量模式:线程池并行翻译,主线程乱序输出并汇总;存在失败返回 EX_PARTIAL。
 
-    忽略列表命中优先于扩展名与存在性检查,且不受 --force 影响;
-    命中文件在主线程前置处理,不提交线程池。fmt 显式时全局覆盖,缺省逐文件推断。
+    前置判断顺序(主线程):非 --force 且译文已存在 → 跳过;命中忽略列表 → 忽略;
+    其余提交线程池。忽略优先于扩展名/存在性检查且不受 --force 影响;
+    译文已存在优先于忽略,仅非 --force 生效。fmt 显式时全局覆盖,缺省逐文件推断。
     """
     ok = skipped = ignored = failed = 0
     todo: list[str] = []
     for p in paths:
-        if ignore_matcher is not None and ignore_matcher.is_ignored(p):
+        # 前置判断顺序:译文已存在(非 force)→ 忽略名单 → 提交线程池
+        if not force and os.path.exists(_zh_path(p)):
+            _warn(f"md2zh: 跳过 {p}: 译文已存在(使用 --force 覆盖)")
+            skipped += 1
+        elif ignore_matcher is not None and ignore_matcher.is_ignored(p):
             _warn(f"md2zh: 忽略 {p}: 命中忽略列表")
             ignored += 1
         else:
