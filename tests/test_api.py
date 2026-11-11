@@ -120,6 +120,27 @@ def _sse(delta: str) -> str:
     return "data: " + json.dumps({"choices": [{"delta": {"content": delta}}]})
 
 
+class _FakeStatusResponse(_FakeResponse):
+    """raise_for_status 抛指定状态码的 HTTPError(模拟网关 4xx/5xx)。"""
+
+    def __init__(self, status_code):
+        super().__init__([])
+        self._status = status_code
+
+    def raise_for_status(self):
+        resp = requests.Response()
+        resp.status_code = self._status
+        raise requests.HTTPError(f"{self._status} Error", response=resp)
+
+
+@pytest.fixture(autouse=True)
+def sleep_calls(monkeypatch):
+    """重试退避不真等:记录 sleep 秒数供断言,避免拖慢测试套件。"""
+    calls = []
+    monkeypatch.setattr(api, "sleep", calls.append, raising=False)
+    return calls
+
+
 def test_translate_text_stream(monkeypatch):
     calls = {}
 
@@ -148,6 +169,67 @@ def test_translate_text_retries_then_raises(monkeypatch):
     with pytest.raises(api.TranslateError):
         api.translate_text("http://x/v1", "m", "p", 1024)
     assert count["n"] == api.RETRY_TIMES + 1
+
+
+def test_retry_backs_off_between_attempts(monkeypatch, sleep_calls):
+    # 瞬时 412(网关抖动/限流)需退避后再试:此前循环内无 sleep,3 次尝试在
+    # 数十毫秒内打光,故障窗口未消退即全部失败(用户实测稍后手动重试即成功)
+    count = {"n": 0}
+
+    def fake_post(url, json, timeout, stream, headers=None):
+        count["n"] += 1
+        if count["n"] < 3:
+            return _FakeStatusResponse(412)
+        return _FakeResponse([_sse("译文"), "data: [DONE]"])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    assert api.translate_text("http://x/v1", "m", "p", 1024) == "译文"
+    assert count["n"] == 3
+    assert sleep_calls == [api.RETRY_BACKOFF, api.RETRY_BACKOFF * 2]  # 指数退避
+
+
+def test_412_exhausts_retries_then_raises(monkeypatch, sleep_calls):
+    # 412 属可重试状态码:退避重试至上限后才抛错
+    count = {"n": 0}
+
+    def fake_post(url, json, timeout, stream, headers=None):
+        count["n"] += 1
+        return _FakeStatusResponse(412)
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    with pytest.raises(api.TranslateError):
+        api.translate_text("http://x/v1", "m", "p", 1024)
+    assert count["n"] == api.RETRY_TIMES + 1
+    assert len(sleep_calls) == api.RETRY_TIMES  # 最后一次失败后不再等待
+
+
+def test_5xx_is_retried(monkeypatch, sleep_calls):
+    count = {"n": 0}
+
+    def fake_post(url, json, timeout, stream, headers=None):
+        count["n"] += 1
+        return _FakeStatusResponse(503)
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    with pytest.raises(api.TranslateError):
+        api.translate_text("http://x/v1", "m", "p", 1024)
+    assert count["n"] == api.RETRY_TIMES + 1
+
+
+def test_permanent_4xx_fails_fast(monkeypatch, sleep_calls):
+    # 400 类错误源于请求本身(如参数非法),重试不会变好:立即失败,
+    # 否则退避会把必然失败的请求拖得更慢
+    count = {"n": 0}
+
+    def fake_post(url, json, timeout, stream, headers=None):
+        count["n"] += 1
+        return _FakeStatusResponse(400)
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    with pytest.raises(api.TranslateError):
+        api.translate_text("http://x/v1", "m", "p", 1024)
+    assert count["n"] == 1
+    assert sleep_calls == []
 
 
 def test_translate_text_surfaces_gateway_error(monkeypatch):

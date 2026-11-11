@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+from time import sleep
 
 import requests
 
@@ -15,7 +16,11 @@ OLLAMA_MODEL = "index-translate-9b:latest"
 DEFAULT_GLOSSARY = os.path.join(os.path.expanduser("~"), ".config", "md2zh", "glossary.json")
 
 RETRY_TIMES = 2
+RETRY_BACKOFF = 1.0   # 首次重试前等待秒数,之后按 2 的幂翻倍(1s、2s)
 REQUEST_TIMEOUT = 120
+# 可重试的 4xx:网关抖动/限流所致,稍后即恢复;其余 4xx 源于请求本身,重试无益。
+# 412 除「缺 User-Agent」这一固定成因外,也会因网关侧瞬时状态间歇出现(实测稍后重试即成功)
+RETRYABLE_STATUS = frozenset({408, 412, 429})
 
 
 class TranslateError(Exception):
@@ -129,7 +134,7 @@ def translate_text(api_base: str, model: str, prompt: str, max_tokens: int,
     # 本地 ollama 无此要求,空 dict 让 requests 使用默认 UA
     headers = {"User-Agent": "Index-Translate-Client/1.0"} if not ollama else {}
     last_error: Exception | None = None
-    for _ in range(RETRY_TIMES + 1):
+    for attempt in range(RETRY_TIMES + 1):
         try:
             with requests.post(url, json=payload, headers=headers,
                                timeout=REQUEST_TIMEOUT, stream=True) as resp:
@@ -170,7 +175,18 @@ def translate_text(api_base: str, model: str, prompt: str, max_tokens: int,
                 if not text.strip():
                     raise TranslateError("API 返回空结果")
                 return text.strip()
+        except requests.HTTPError as e:
+            # 须排在 RequestException 之前(HTTPError 是其子类)。
+            # 非可重试的 4xx 源于请求本身,立即失败:退避只会把必然失败拖得更慢
+            status = e.response.status_code if e.response is not None else 0
+            if 400 <= status < 500 and status not in RETRYABLE_STATUS:
+                raise TranslateError(str(e)) from e
+            last_error = e
         except (requests.RequestException, TranslateError) as e:
             last_error = e
+        if attempt < RETRY_TIMES:
+            # 指数退避:瞬时故障(网关抖动/限流/间歇 412)需要时间消退,
+            # 无间隔连发会在同一故障窗口内打光全部重试次数
+            sleep(RETRY_BACKOFF * 2 ** attempt)
     # from 保留原始异常链,便于排查根因
     raise TranslateError(str(last_error)) from last_error
