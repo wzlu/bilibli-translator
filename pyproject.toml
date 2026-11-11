@@ -39,10 +39,13 @@ name = "cz_customize"
 version = "0.7.3"
 tag_format = "v$version"
 update_changelog_on_bump = false
+# 刻意不含 CLAUDE.md:该文件多处散文里出现「当前版本」字样(发版说明、历史
+# Recent Updates 条目),而 version_files 的模式是对每行做**非锚定搜索**,
+# 实测 v0.7.3 那次 bump 把历史条目「v0.7.2 发版工具链…」误改成 v0.7.3。
+# CLAUDE.md 不再复写版本号(改指 md2zh --version),从根上消除该风险。
 version_files = [
     "src/md2zh/__init__.py:^__version__",
     "README.md:version-",
-    "CLAUDE.md:当前版本",
 ]
 
 # 在 Conventional Commits 默认类型上追加本仓库既有的 release 类型
