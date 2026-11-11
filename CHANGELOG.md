@@ -5,16 +5,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.1] - 2026-11-11
 
 ### 修复
 
+- 无空行超长块导致整文翻译失败(退出 75)与静默截断:分块器此前仅在空行/逻辑边界切分,爬取页面常见的「超长单行」(实证 31739 字符仅 3 行)被当作不可分割块整体送译——输出预算触顶 16384 后被网关按「prompt + max_tokens 总量」拒绝(实证 prompt 31888 字符时 16384 拒、12288 通过,总量上限约 24576 tokens),退到可接受的预算则译文静默截断(8192 tokens 仅覆盖 67.5% 源文,完整约需 12137 tokens,余量仅 1.2%)。现新增 `markdown.FORCE_SPLIT_LIMIT = 6000`,超限块按空白边界强制切分(优先换行,其次空格),md/html/txt 三格式经 `pack_blocks` 统一生效;每块 prompt 与预算之和回落到约 1.5 万 tokens(≥25% 余量),输出预算有约 5 倍余量,不再截断
 - 批量列表重复条目去重:`--filelist` 中同一文件出现多行且译文尚不存在时,此前各行均通过存在性前置检查并进入线程池,并行 worker 的存在性双查均早于任一方写盘,导致重复调用翻译 API;现入口保序去重,同一文件单次运行至多翻译一次(跨进程并发的同型竞态不在本次范围,无锁文件)
 - 特大不可分割块(如约 19K 字符的表格)整文翻译失败(退出 75):输出预算公式 `len*2+200` 可产生超网关上限的 max_tokens(实证 38106 被拒、16384 通过),网关以 HTTP 200 返回 invalid_request 错误分片;现预算封顶 16384(取舍:极端块译文可能截断,由块级校验警告提示,优于整文失败)
 - 网关错误分片不再被静默吞掉:SSE 流含 `error` 分片时透出真实错误(如「网关返回错误: 请求参数格式错误」),修复被误报为「API 返回空结果」导致排障困难的问题
 
 ### 变更
 
+- 分块语义:超过 `FORCE_SPLIT_LIMIT`(6000 字符)的块不再「保持完整」,改按空白边界切分(大表格按行断开,`"".join(chunks) == text` 拼接恒等不变);未达该阈值的超限块行为不变。占位符令牌不含空白,故切点永不落在令牌内部;整块无空白时(HTML 令牌块、病理串)仍保持完整,由输出预算封顶兜底
 - 批量汇总按文件计一次:重复条目的「跳过/成功」不再按列表行重复计(如译文已存在的重复行由「跳过 2」改为「跳过 1」)
 
 ## [0.7.0] - 2026-10-22
@@ -170,6 +172,7 @@
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
 [Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.7.0...HEAD
+[0.7.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.1
 [0.7.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.0
 [0.6.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.6.0
 [0.5.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.5.0

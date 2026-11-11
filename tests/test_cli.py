@@ -3,6 +3,7 @@ import sys
 
 import pytest
 
+from md2zh import __version__
 from md2zh import api
 from md2zh import cli
 from md2zh import ignore
@@ -410,7 +411,8 @@ def test_prog_follows_argv0(monkeypatch, capsys):
     with pytest.raises(SystemExit) as e:
         cli.main(["--version"])
     assert e.value.code == 0
-    assert "txt2zh 0.7.0" in capsys.readouterr().out
+    # 本测试锁定 argv0→程序名映射,版本号由 test_version.py 单独锁定
+    assert f"txt2zh {__version__}" in capsys.readouterr().out
     with pytest.raises(SystemExit) as e:
         cli.main(["--format", "xml", "a.md"])
     assert e.value.code == translator.EX_USAGE

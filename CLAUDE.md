@@ -2,7 +2,7 @@
 
 ## Overview
 
-将英文 Markdown / HTML / TXT 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown→md`、`.html/.htm→html`、`.txt→txt`,未知扩展名回落 md),可用 `--format` 显式覆盖;文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器);`txt2zh` 为同一入口的命令别名。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.7.0。
+将英文 Markdown / HTML / TXT 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown→md`、`.html/.htm→html`、`.txt→txt`,未知扩展名回落 md),可用 `--format` 显式覆盖;文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器);`txt2zh` 为同一入口的命令别名。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.7.1。
 
 ## Architecture
 
@@ -14,7 +14,7 @@
 - `formats.py` — 格式注册表:Format(frozen dataclass:split_frontmatter/protect/restore/chunk_text/validators/constraints)与 md/html/txt 三条目;`infer_format` 按扩展名推断、未知回落 md
 - `html.py` — HTML 适配器:引号感知状态机单遍扫描,标签/属性/注释/doctype/实体/script·style·pre·code 原始块占位保护(令牌 `@@@HTMLBLOCK_n@@@`/`@@@HTMLTAG_n@@@`/`@@@HTMLENT_n@@@`),还原字节级保真
 - `txt.py` — TXT 适配器:零保护直通、空行分段
-- `markdown.py` — Markdown 适配实现与共享分段工具:frontmatter 拆分、代码块/行内代码占位符保护、逻辑分段;`pack_blocks`/`split_blank_lines`/朴素还原供 html/txt 单向复用
+- `markdown.py` — Markdown 适配实现与共享分段工具:frontmatter 拆分、代码块/行内代码占位符保护、逻辑分段、超长块按空白强制切分(`FORCE_SPLIT_LIMIT`);`pack_blocks`/`split_blank_lines`/朴素还原供 html/txt 单向复用
 - `checks.py` — 纯函数块级校验:链接、表格、占位符、HTML 文本(模型自造标签/实体计数)
 - `ignore.py` — 忽略列表解析与通配匹配(精确路径 + `**`/段内通配,UTF-8-sig→GBK 回退)
 
@@ -25,6 +25,7 @@
 - **格式注册表与分派**:Format 适配面(md/html/txt 三条目)统一保护/还原/分段/校验/提示词约束;translator 调用点改派 `fmt.split_frontmatter/protect/restore/chunk_text/validators/constraints`;`api.build_prompt` 按格式注入约束(缺省回落 `markdown.CONSTRAINTS`,默认输出与既有逐字节一致);内部函数 `fmt=None` 回落 md,CLI `--format` 显式覆盖推断,批量模式缺省逐文件推断
 - **HTML 状态机占位保护**:引号感知单遍扫描——标签内引号含 `>` 不误切,script/style/pre/code 原始块整体保护至首个 `</name`(不区分大小写),字面 `<` 与未知实体不误判,命名实体按 `html.entities.html5` 最长匹配;保护顺序 块→标签→实体 保证 mapping 值不含令牌,朴素顺序 replace 还原往返字节级安全;不引入解析器、不重序列化(spike 实证:正则与 html.parser 方案均被否决)
 - **单次调用为主**:可译文本 ≤ 15000 字符整文一次流式调用(术语天然一致);超长按逻辑边界分段(≤3000 字符/段,附前段上下文参考保证术语延续;上下文发送前还原占位符,占位符令牌不进 API 请求),不可分割的超限块按块长缩放输出预算并封顶 16384(网关 max_tokens 上限,超限返回 invalid_request 空流;实证 38106 拒、16384 过)
+- **超长块强制切分**:网关按「prompt + max_tokens」总量限制(实证 ≈24576 tokens),故超过 `markdown.FORCE_SPLIT_LIMIT = 6000` 字符的块在 `pack_blocks` 内按空白边界强制切分(优先换行→大表格按行断开,其次空格→爬取页面的超长单行),md/html/txt 三格式统一生效;占位符令牌不含空白,切点永不落在令牌内部;整块无空白时保持完整,由预算封顶兜底。6000 字符块的 prompt+预算约 1.5 万 tokens(≥25% 余量),输出预算约 5 倍余量(实测输出 ≈0.383 tokens/源字符)
 - **四重格式保障**:占位符隔离 + 提示词格式约束 + 块级校验 + 可选自动修复循环(--repair 默认关闭;校验失败一律采用译文并警告,不回退原文)
 - **frontmatter 独立翻译**:仅译 value,key 与 `---` 标记由提示词约束保持,不校验、不重译、不回退
 - **术语表**:`--glossary` 指定 JSON 文件(`{"英文": "中文"}`);缺省自动加载 `~/.config/md2zh/glossary.json`(不存在视为无术语表);以【硬性要求】专名/术语对照附加到每段请求
@@ -46,7 +47,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(256 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(263 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见各版规格(md 基线 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;多格式 `2026-10-15-multiformat-html-txt-design.md` §6)
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -102,6 +103,8 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]   # txt2zh 为同一入口
 
 ## Recent Updates (Updated: 2026-11-11)
 
+超长块强制切分(2026-11-11):真实 70KB SKILL.md(seurat-local,爬取页面)单文件翻译退出 75「网关返回错误: 请求参数或格式有误」。系统化排查:先用**静态重放**分块管线(零 API 调用)定位 chunk #1 为 31739 字符却仅 3 行——爬取页面换行被压平、无空行可切,分块器按「不可分割块」整体送译,预算公式 `len*2+200` 触顶 16384;再对同一 prompt 做 max_tokens 单变量探针:4096 ✅(9682 字符,截断)、8192 ✅(20465 字符,仅覆盖 67.5% 源文,截断)、12288 ✅(24218 字符,完整,尾部与源文一致)、16384 ❌(1.0s invalid_request);对照 prompt 17894 字符 + 16384 ✅ → 实锤网关限的是「prompt + max_tokens **总量**」(≈24576 tokens),而非 max_tokens 单项。故 60d5dbb 的常量封顶只治症状:压低了预算,没压低 prompt。又完整译文需约 12137 tokens、12288 仅留 **1.2% 余量** → 单改预算公式是刀尖走路,必须结构性限块长。修复:`markdown.py` 增 `FORCE_SPLIT_LIMIT = 6000`,`pack_blocks` 对超限块按空白边界强制切分(优先换行→大表格按行断开,其次空格→超长单行)。**只在空白处切、不做硬切**:占位符令牌不含空白故切点永不落在令牌内部(硬切会撕碎 HTML 的 `@@@HTMLTAG_n@@@` 令牌并损坏还原),整块无空白时保持完整、由预算封顶兜底;md/html/txt 经 `pack_blocks` 统一生效,`html.py`/`txt.py` 零改动。阈值取 6000 而非 `max_chars` 3000:按 3000 切会使本文件调用数 9→24 并拆碎本可一次译完的大表格;6000 下 prompt+预算约 1.5 万 tokens(≥25% 余量)、输出预算约 5 倍余量(实测输出 ≈0.383 tokens/源字符)。263/263 测试通过(新增 6 项切分语义 + 1 项本 bug 回归守卫;3 个既有「超限块保持完整」测试原样通过,因其语料为无空白串);唯一改写的既有测试是 `test_oversized_chunk_budget_capped`(改用无空白块,以保留封顶路径覆盖)。模糊测试 3000 组随机输入 × 5 种 `max_chars`:拼接恒等 0 破损、无超限片、无空片、无死循环。真实 API 端到端复跑:16/16 调用成功、退出 0、**零警告**、7m14s,`SKILL_zh.md` 生成(67070 字节 / 42851 字符,源 70428);体检:0 处 `@@@` 残留、frontmatter 完好(`name` key 未译、`description` 已译)、结尾完整(「## 更新」小节)、中文占比 26%。重复率对照:同口径下**源文**长句重复率 35.54%(爬取页面每节重复引用同一片段),**译文**仅 5.85% → 未见切分引入的成规模重复;唯一残留痕迹是代码围栏由源文 18 处增至译文 22 处(+2 对 `hclust`/`Seurat`),系模型在切分边界重发「上下文参考」尾部所致(既有已知限制:模型可能不遵守『不得输出上下文参考』硬约束),范围有界。
+
 特大块预算封顶与网关错误透出(2026-11-11,提交 60d5dbb/b3e3e09):真实 139KB SKILL.md(含约 19K 字符巨型表格)单文件翻译连续 3 次退出 75(「API 返回空结果」)。系统化排查:最小探针/frontmatter/静态可疑 chunk 单发均通过 → 带仪表重放整条管线定位第 21 号调用(prompt 19982 字符、预算 38106、0.9s 三次重试速败)→ 重放落盘 prompt 抓原始 SSE,实锤网关返回 HTTP 200 + `invalid_request` 错误分片(38106 被拒),同 prompt 预算 16384 正常流式(1878 内容分片,输出以 `|` 开头证实巨表)。根因:不可分割超限块的预算公式 `len*2+200` 无封顶,超出网关 max_tokens 上限;次因:SSE 解析器静默跳过不含 `choices` 的 error 分片,误报「空结果」且无谓快速重试 3 次(无退避)。修复:①translator 增 `MAX_TOKENS_CEILING=16384` 封顶(新测试锁定封顶、原缩放测试不回归);②api 对 error 分片透出「网关返回错误: {消息}」(新测试锁定)。256/256 测试通过。真实 API 端到端复跑:42/42 调用成功、零警告,SKILL_zh.md 正常生成(147KB、无 @@@ 残留);封顶路径实际救回 4 个大块(#21/#33/#35/#40,原公式将分别请求约 38.1K/16.6K/24.6K/17.2K,首次运行在 #21 即中止故后三者此前从未被触达),#21 返回 14775 字符完整表格译文(未触顶截断)。
 
 批量重复条目去重(2026-11-11,提交 55d28b0/17ace3a):`run_batch` 入口增加 `dict.fromkeys` 保序去重——此前 filelist 中同一文件出现多行且译文尚不存在时,各行均通过存在性前置检查并进入线程池,worker 双查(translator.py:81)均早于任一方写盘,导致重复调用 API(进程内双译竞态);现同一文件单次运行至多一个任务,汇总按文件计一次(重复条目的「跳过/成功」不再按行重复计,如译文已存在的重复行由「跳过 2」改为「跳过 1」);`--force` 仍为显式覆盖,单文件模式与 worker 双查逻辑不变。新增 2 项测试锁定语义(重复条目仅翻译一次、译文已存在重复条目跳过计一次),254/254 通过。跨进程并发(两个 md2zh 进程跑重叠列表)的 TOCTOU 竞态仍在,无锁文件(YAGNI 裁决)。顺带环境修复:发现 anaconda 中 md2zh 为非可编辑安装(site-packages 副本遮蔽 `src/` 改动,此前测试实际运行的是安装副本),清理 pip 卸载中断残留(`~d2zh` 垃圾目录)后重装 `pip install -e .`,导入直指 `src/`,`md2zh`/`txt2zh` CLI 入口实测正常。
@@ -143,9 +146,10 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - v0.4.0 已知限制(终审随行发布):批量模式 Ctrl+C/下游管道关闭后,运行中的请求至多延续重试×超时(最坏约 6 分钟)进程才退出(未启动任务已取消,`test_run_batch_broken_pipe_cancels_pending` 锁定该语义);`-c` 无上界(线程按文件数懒创建,用户自限);批量译文路径完成即输出、顺序不定(按设计);两个时序测试依赖 0.5s/0.05s 时差(10 倍余量,复跑稳定);真实 API 复验实测 3/117 块「占位符丢失」(INLINE 令牌,采用译文并警告,不回退语义既定取舍)
 - v0.5.0 已知限制(终审观察项随行发布):本地 ollama 模型 thinking 输出会消耗 max_tokens 预算(超长输出可能被静默截断,finish_reason 未检测);120s 超时对本地慢速推理余量有限;代理环境下 localhost 请求未豁免 HTTP_PROXY(如需直连需自行设置 no_proxy)。均为本地后端边缘行为,损害有界
 - v0.7.0 已知限制(终审随行发布):目录名恰好为 `*_zh.<扩展名>`(如 `a_zh.md` 是目录)时,前置 exists 会将其误判为已存在译文而跳过(§4.3.3 同型病理,重命名目录即恢复);跳过警告在批量模式统一前置输出,不再与完成输出交错(按设计)
-- v0.6.0 已知限制(终审随行发布):HTML 属性(alt/title/placeholder)不译,`lang`/`meta` 不改写;HTML5 双重转义态(如 script 内 `<!--<script>`)与 textarea/title 的 RCDATA 语义不特判,CDATA 内含 `>` 在首个 `>` 截断;正文以 `<`+字母 开头(如 `<apple`)误判为标签,最坏该段误保护不翻译;畸形 HTML(未闭合标签/引号)余文不保护地进入送译文本(protect→restore 往返恒等;译文若改写余文将触发裸字符校验警告);模型可能自造 `**` 等非 HTML 格式标记(提示词硬约束缓解,校验无法拦截);源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍);minified HTML 依赖占位符令牌边界分段,超长单块保持完整(按块长缩放输出预算);未知扩展名回落 md;`txt2zh` 调用的 stderr 前缀仍为 `md2zh:`;库级 fmt 非法值仅库调用可达
+- v0.6.0 已知限制(终审随行发布):HTML 属性(alt/title/placeholder)不译,`lang`/`meta` 不改写;HTML5 双重转义态(如 script 内 `<!--<script>`)与 textarea/title 的 RCDATA 语义不特判,CDATA 内含 `>` 在首个 `>` 截断;正文以 `<`+字母 开头(如 `<apple`)误判为标签,最坏该段误保护不翻译;畸形 HTML(未闭合标签/引号)余文不保护地进入送译文本(protect→restore 往返恒等;译文若改写余文将触发裸字符校验警告);模型可能自造 `**` 等非 HTML 格式标记(提示词硬约束缓解,校验无法拦截);源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍);minified HTML 依赖占位符令牌边界分段,超长单块在无空白切点时保持完整(按块长缩放输出预算并封顶);未知扩展名回落 md;`txt2zh` 调用的 stderr 前缀仍为 `md2zh:`;库级 fmt 非法值仅库调用可达
 - 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
-- 特大块预算封顶已知限制(2026-11-11 修复随行):译文超出 16384 输出预算的不可分割块会被截断(finish_reason 未检测,块级校验警告为唯一提示);封顶值为公共网关实证上限,网关规格变化需重校
-- 批量去重已知限制(2026-11-11 修复随行):去重按路径字符串精确匹配,同一文件的不同写法(`a.md` 与 `./a.md`、Windows 大小写差异)不去重——罕见且损害有界(多一次 API 调用,原子写保证结果正确);跨进程并发竞态需锁文件才能根治,维持 YAGNI 裁决
+- v0.7.1 已知限制(特大块预算封顶,同日经强制切分收窄):封顶仅对「无空白切点因而无法强制切分」的块生效(HTML 令牌块、无空白病理串);此类块译文若超出预算仍会被截断(finish_reason 未检测,块级校验警告为唯一提示)。封顶值与 `FORCE_SPLIT_LIMIT` 均为公共网关实证推导值,网关规格变化需重校
+- v0.7.1 已知限制(强制切分):切点只识别换行与空格,不识别制表符——仅含 tab 分隔的超长块(如 TSV)无切点,保持完整走预算封顶兜底;块内几乎无空白时切点可能落在极早位置,产出一个很小的首片(如 `"| "`),拼接恒等不受影响;超过 6000 字符的大表格按行拆分后各片独立校验(片段内行数/列数自洽,不产生额外警告),但译文片段不含表头行,术语一致性依赖既有的前段上下文参考
+- v0.7.1 已知限制(批量去重):去重按路径字符串精确匹配,同一文件的不同写法(`a.md` 与 `./a.md`、Windows 大小写差异)不去重——罕见且损害有界(多一次 API 调用,原子写保证结果正确);跨进程并发竞态需锁文件才能根治,维持 YAGNI 裁决
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略;确认安装为可编辑(`python -c "import md2zh; print(md2zh.__file__)"` 应指向 `src/`)——非可编辑安装会遮蔽源码改动,修复用 `pip install -e .`(2026-11-11 曾发现并修复一例)
-- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.7.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
+- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.7.1);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
