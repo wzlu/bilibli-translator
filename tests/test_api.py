@@ -135,9 +135,13 @@ class _FakeStatusResponse(_FakeResponse):
 
 @pytest.fixture(autouse=True)
 def sleep_calls(monkeypatch):
-    """重试退避不真等:记录 sleep 秒数供断言,避免拖慢测试套件。"""
+    """重试退避不真等:记录 sleep 秒数供断言,避免拖慢测试套件。
+
+    刻意不加 raising=False:api.sleep 一旦被重命名,这里必须立刻报错。
+    否则打桩静默失效、测试开始真的等待,套件从 3 秒变成几十秒且无任何提示。
+    """
     calls = []
-    monkeypatch.setattr(api, "sleep", calls.append, raising=False)
+    monkeypatch.setattr(api, "sleep", calls.append)
     return calls
 
 
@@ -188,13 +192,17 @@ def test_retry_backs_off_between_attempts(monkeypatch, sleep_calls):
     assert sleep_calls == [api.RETRY_BACKOFF, api.RETRY_BACKOFF * 2]  # 指数退避
 
 
-def test_412_exhausts_retries_then_raises(monkeypatch, sleep_calls):
-    # 412 属可重试状态码:退避重试至上限后才抛错
+@pytest.mark.parametrize("status", [408, 412, 429, 500, 502, 503])
+def test_retryable_status_exhausts_retries(monkeypatch, sleep_calls, status):
+    # 可重试状态码:退避重试至上限后才抛错。
+    # 状态码列表刻意写成字面量、不从 api.RETRYABLE_STATUS 派生——若从常量派生,
+    # 常量被改坏时参数列表会跟着缩小,测试永远发现不了(实测:删掉 429 后本用例
+    # 从 5 个降到 4 个、全绿)。改常量必须同时改这里,这正是想要的摩擦。
     count = {"n": 0}
 
     def fake_post(url, json, timeout, stream, headers=None):
         count["n"] += 1
-        return _FakeStatusResponse(412)
+        return _FakeStatusResponse(status)
 
     monkeypatch.setattr(api.requests, "post", fake_post)
     with pytest.raises(api.TranslateError):
@@ -203,27 +211,15 @@ def test_412_exhausts_retries_then_raises(monkeypatch, sleep_calls):
     assert len(sleep_calls) == api.RETRY_TIMES  # 最后一次失败后不再等待
 
 
-def test_5xx_is_retried(monkeypatch, sleep_calls):
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 422])
+def test_permanent_4xx_fails_fast(monkeypatch, sleep_calls, status):
+    # 非可重试 4xx 源于请求本身(参数非法/鉴权/不存在),重试不会变好:
+    # 立即失败,否则退避会把必然失败的请求拖得更慢
     count = {"n": 0}
 
     def fake_post(url, json, timeout, stream, headers=None):
         count["n"] += 1
-        return _FakeStatusResponse(503)
-
-    monkeypatch.setattr(api.requests, "post", fake_post)
-    with pytest.raises(api.TranslateError):
-        api.translate_text("http://x/v1", "m", "p", 1024)
-    assert count["n"] == api.RETRY_TIMES + 1
-
-
-def test_permanent_4xx_fails_fast(monkeypatch, sleep_calls):
-    # 400 类错误源于请求本身(如参数非法),重试不会变好:立即失败,
-    # 否则退避会把必然失败的请求拖得更慢
-    count = {"n": 0}
-
-    def fake_post(url, json, timeout, stream, headers=None):
-        count["n"] += 1
-        return _FakeStatusResponse(400)
+        return _FakeStatusResponse(status)
 
     monkeypatch.setattr(api.requests, "post", fake_post)
     with pytest.raises(api.TranslateError):
