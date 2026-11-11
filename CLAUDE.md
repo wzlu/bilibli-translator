@@ -51,7 +51,7 @@ python -m pip install -e ".[dev]"
 - **真实 API 不进自动化测试**;手工验证清单见各版规格(md 基线 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;多格式 `2026-10-15-multiformat-html-txt-design.md` §6)
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
-- **刻意取舍留痕**:有意为之的简化(经验常量、未覆盖的输入形态、暂不做的健壮性)须在代码处写 `# shortcut: <局限>, <何时升级>` 注释,使 `/ponytail-debt` 能扫出台账。只写进 CLAUDE.md/CHANGELOG 散文里的取舍**不可 grep、易静默变永久**(2026-11-11 曾有一条「退避无 jitter」只存在于对话历史,连文档都没进);散文可补充细节,但行内标记是台账的唯一入口
+- **刻意取舍留痕**:有意为之的简化(经验常量、未覆盖的输入形态、暂不做的健壮性)须在代码处写 `shortcut: <局限>, <何时升级>` 形式的**注释**(前面带该语言的注释符),使 `/ponytail-debt` 能扫出台账。本文档刻意不写出带注释符的完整样例,否则会被扫描器当成一条真债(实测踩过)。只写进 CLAUDE.md/CHANGELOG 散文里的取舍**不可 grep、易静默变永久**(2026-11-11 曾有一条「退避无 jitter」只存在于对话历史,连文档都没进);散文可补充细节,但行内标记是台账的唯一入口
 - 提交信息以 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 结尾;遵循 Conventional Commits(`feat`/`fix(scope)`/`docs`/`test`/`release`),历史已高度符合
 - **发版**:`pipx run --spec commitizen cz bump`(按提交类型自动定级,或 `--increment PATCH|MINOR|MAJOR` 显式指定)自动改版本号并打 tag;可先加 `--dry-run` 或 `--files-only` 预演。版本**单一来源**是 `src/md2zh/__init__.py`,`pyproject.toml` 经 `dynamic = ["version"]` 取值,`[tool.commitizen].version_files` 负责同步 README 徽章与 CLAUDE.md「当前版本」——发版时无需手工改任何数字(实测一次 bump 精确改动 4 个文件各 1 行,不误伤 CLAUDE.md 里的历史版本记述)。`CHANGELOG.md` **刻意手写**(条目含实证数据、根因分析与验证结果,工具生成的一行式摘要是降级),发版时把 `[Unreleased]` 改名并补链接引用。commitizen **不列入 dev 依赖**:它要求 `argcomplete<3.7`,与 pipx 的 `>=3.7.2` 互斥,装进同一环境会破坏 pipx(2026-11-11 实测踩过并已修复),故一律用 `pipx run --spec commitizen cz ...` 隔离执行
 - `tests/test_version.py` 不再硬编码版本号(否则每次 bump 都要改),改为校验 semver 格式与「`__version__` == 包元数据 version」——后者正是 `dynamic` 配置失效的哨兵
