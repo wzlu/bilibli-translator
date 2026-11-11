@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
 ![Version](https://img.shields.io/badge/version-0.7.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-254%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-256%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -172,7 +172,7 @@ POST http://localhost:11434/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(254 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(256 项,API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -195,7 +195,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析与共享分段)
 │                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
 │                       # formats(格式注册表) / html(HTML 适配器) / txt(TXT 适配器)
-├── tests/              # 254 项测试,API 全 mock
+├── tests/              # 256 项测试,API 全 mock
 ├── data/               # 手工验证样例(sample_en.md/html/txt)
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)
@@ -212,7 +212,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 - 批量列表去重按路径字符串精确匹配,同一文件的不同写法(如 `a.md` 与 `./a.md`)不去重;两个进程并发跑重叠列表的竞态未根治(无锁文件)——损害有界(至多多一次 API 调用,原子写保证结果正确)。
 - `--ollama` 本地后端:模型 thinking 输出计入输出预算(max_tokens),超长输出可能被静默截断;120s 超时对本地慢速推理余量有限;代理环境下 localhost 请求未豁免 HTTP_PROXY(需直连时自行设置 no_proxy)。
 - 多格式(HTML):HTML 属性(alt/title/placeholder)不译,`lang`/`meta` 不改写;HTML5 双重转义态(如 script 内 `<!--<script>`)与 textarea/title 的 RCDATA 语义不特判,CDATA 内含 `>` 在首个 `>` 处截断;正文以 `<`+字母 开头(如 `<apple`)会被当作标签误保护、该段不翻译;畸形 HTML(未闭合标签/引号)余文不保护地进入送译文本(protect→restore 往返恒等;译文若改写余文将触发裸字符校验警告)。
-- 多格式(通用):模型可能自造 `**` 等非 HTML 格式标记(提示词硬约束缓解,块级校验无法拦截);源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍);minified HTML 依赖占位符令牌边界分段,超长单块保持完整并按块长缩放输出预算。
+- 多格式(通用):模型可能自造 `**` 等非 HTML 格式标记(提示词硬约束缓解,块级校验无法拦截);源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍);minified HTML 依赖占位符令牌边界分段,超长单块保持完整并按块长缩放输出预算(封顶网关上限,极端块译文可能截断,stderr 校验警告提示)。
 - 格式推断:未知扩展名按 Markdown 处理;`txt2zh` 调用的 stderr 前缀仍为 `md2zh:`;批量模式无法逐文件指定格式(显式 `--format` 全局覆盖,混合格式列表交由扩展名推断)。
 - 库级 `--format`/`fmt` 非法值仅库调用可达(CLI `choices` 已拦截)。
 
