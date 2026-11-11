@@ -26,6 +26,7 @@ CHUNK_SIZE = 3000
 CONTEXT_TAIL = 800          # 分段时附前段上下文参考的字符数
 MAX_TOKENS_SINGLE = 8192
 MAX_TOKENS_CHUNK = 4096
+MAX_TOKENS_CEILING = 16384  # 网关 max_tokens 上限:超限返回 invalid_request(实证 38106 拒、16384 通过)
 
 _stderr_lock = threading.Lock()
 
@@ -208,8 +209,9 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
     prev_context = ""
     half = CONTEXT_TAIL // 2
     for chunk in fmt.chunk_text(text, CHUNK_SIZE):
-        # 不可分割的超限块(如大表格)按块长放大输出预算,避免确定性截断
-        budget = max(MAX_TOKENS_CHUNK, len(chunk) * 2 + 200)
+        # 不可分割的超限块(如大表格)按块长放大输出预算,避免确定性截断;
+        # 封顶于网关上限,否则特大块(如约 19K 字符表格)触发 invalid_request 整文失败
+        budget = min(max(MAX_TOKENS_CHUNK, len(chunk) * 2 + 200), MAX_TOKENS_CEILING)
         translated = _translate_chunk(chunk, glossary, api_base, model,
                                       budget, context=prev_context, source=source,
                                       repair=repair, ollama=ollama, fmt=fmt)

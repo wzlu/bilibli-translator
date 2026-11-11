@@ -149,6 +149,21 @@ def test_translate_text_retries_then_raises(monkeypatch):
         api.translate_text("http://x/v1", "m", "p", 1024)
     assert count["n"] == api.RETRY_TIMES + 1
 
+
+def test_translate_text_surfaces_gateway_error(monkeypatch):
+    # 网关对参数错误(如 max_tokens 超限)返回 HTTP 200 + error 分片:
+    # 曾因无 choices 被静默跳过 → 误报「API 返回空结果」,掩盖 invalid_request 真因
+    err_line = "data: " + json.dumps(
+        {"error": {"message": "请求参数格式错误", "type": "invalid_request"}})
+
+    def fake_post(url, json, timeout, stream, headers=None):
+        return _FakeResponse([err_line])
+
+    monkeypatch.setattr(api.requests, "post", fake_post)
+    with pytest.raises(api.TranslateError) as exc:
+        api.translate_text("http://x/v1", "m", "p", 38106)
+    assert "请求参数格式错误" in str(exc.value)
+
 def test_translate_text_error_preserves_cause(monkeypatch):
     # 重试耗尽抛出的 TranslateError 应保留原始异常链,便于排查根因
     def fake_post(url, json, timeout, stream, headers=None):

@@ -151,6 +151,12 @@ def translate_text(api_base: str, model: str, prompt: str, max_tokens: int,
                     # 网关可能发送非对象分片,跳过而不是崩溃(见 references/call_api.py)
                     if not isinstance(chunk, dict):
                         continue
+                    # 网关对参数错误(如 max_tokens 超限)返回 HTTP 200 + error 分片:
+                    # 透出真实错误,防止被静默跳过后误报「API 返回空结果」
+                    if chunk.get("error"):
+                        err = chunk["error"]
+                        msg = err.get("message", err) if isinstance(err, dict) else err
+                        raise TranslateError(f"网关返回错误: {msg}")
                     choices = chunk.get("choices") or []
                     if not choices or not isinstance(choices[0], dict):
                         continue

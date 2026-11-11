@@ -261,6 +261,27 @@ def test_oversized_chunk_budget_scaled(monkeypatch, tmp_path):
     assert budgets[0] >= len(big_table) * 2  # 覆盖两倍块长的输出需求
 
 
+def test_oversized_chunk_budget_capped(monkeypatch, tmp_path):
+    # 特大块预算封顶于网关 max_tokens 上限:原公式 len*2+200 超限会被网关
+    # 以 invalid_request 拒绝(实证 38106 拒、16384 通过),整个文件翻译失败
+    big_table = "| " + "a" * 10000 + " | b |\n"
+    src = tmp_path / "big.md"
+    src.write_text(big_table, encoding="utf-8")
+    monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
+    budgets = []
+
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
+        budgets.append(max_tokens)
+        return big_table.rstrip()
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    result = translator.translate_file(str(src), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"
+    assert len(big_table) * 2 + 200 > translator.MAX_TOKENS_CEILING  # 公式值确实超限
+    assert budgets[0] == translator.MAX_TOKENS_CEILING  # 被封顶
+
+
 def test_parse_filelist(tmp_path):
     lst = tmp_path / "list.txt"
     lst.write_text("# 注释\n\na.md\n  b.md  \n\n", encoding="utf-8")
