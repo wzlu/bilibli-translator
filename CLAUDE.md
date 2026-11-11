@@ -2,7 +2,7 @@
 
 ## Overview
 
-将英文 Markdown / HTML / TXT 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown→md`、`.html/.htm→html`、`.txt→txt`,未知扩展名回落 md),可用 `--format` 显式覆盖;文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器);`txt2zh` 为同一入口的命令别名。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.7.1。
+将英文 Markdown / HTML / TXT 文件翻译为中文的 Python 命令行工具(≥3.10),基于 Bilibili Index-Translate 免费翻译 API。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown→md`、`.html/.htm→html`、`.txt→txt`,未知扩展名回落 md),可用 `--format` 显式覆盖;文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`);`md2zh -` 支持 stdin 读入、译文写 stdout(管道过滤器);`txt2zh` 为同一入口的命令别名。符合 unix-cli 规范,全流程自动化、无人值守。当前版本 0.7.2。
 
 ## Architecture
 

@@ -36,7 +36,7 @@ version = { attr = "md2zh.__version__" }
 # CHANGELOG 手写(含实证数据与根因分析),刻意不由工具生成。
 [tool.commitizen]
 name = "cz_customize"
-version = "0.7.1"
+version = "0.7.2"
 tag_format = "v$version"
 update_changelog_on_bump = false
 version_files = [

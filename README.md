@@ -3,7 +3,7 @@
 将英文 Markdown / HTML / TXT 文件翻译为中文的命令行工具,基于 Bilibili Index-Translate 免费翻译 API(无需 API Key)。亦支持本地 ollama 离线翻译(`--ollama`)。格式按扩展名自动推断(`.md/.markdown`、`.html/.htm`、`.txt`,可用 `--format` 显式覆盖,未知扩展名回落 Markdown);文件模式译文保存于原文件同目录,命名为 `*_zh.<原扩展名>`(如 `ABC.md → ABC_zh.md`、`page.html → page_zh.html`);`md2zh -` 从 stdin 读入、译文写 stdout,可用作管道过滤器;`txt2zh` 为同一入口的命令别名。全流程自动化、无人值守。
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
-![Version](https://img.shields.io/badge/version-0.7.1-brightgreen)
+![Version](https://img.shields.io/badge/version-0.7.2-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
