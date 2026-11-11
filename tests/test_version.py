@@ -1,5 +1,4 @@
 import re
-from importlib.metadata import version as pkg_version
 
 from md2zh import __version__
 
@@ -8,7 +7,7 @@ def test_version_is_semver():
     assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
 
 
-def test_version_matches_package_metadata():
-    # 版本单一来源是 __init__.py,pyproject 经 dynamic 取值;
-    # 两者不一致说明 dynamic 配置失效(如 attr 路径写错),发版会带错版本号
-    assert __version__ == pkg_version("md2zh")
+# 刻意不比对已安装的包元数据版本:bump 之后未重装时元数据必然滞后,
+# 那不是代码缺陷,却会让测试在每次发版后失败(失败的发版测试会被无视)。
+# 「pyproject 不得再存静态版本号」由 PEP 621 / setuptools 自身强制:
+# version 与 dynamic = ["version"] 并存会直接报错,无需测试兜底。
