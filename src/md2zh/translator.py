@@ -270,7 +270,10 @@ def run_batch(paths: list[str], *, force: bool, glossary: list[str],
     前置判断顺序(主线程):非 --force 且译文已存在 → 跳过;命中忽略列表 → 忽略;
     其余提交线程池。忽略优先于扩展名/存在性检查且不受 --force 影响;
     译文已存在优先于忽略,仅非 --force 生效。fmt 显式时全局覆盖,缺省逐文件推断。
+    列表重复条目保序去重:同一文件单次运行至多一个任务,汇总按文件计一次。
     """
+    # 去重消除并行双译竞态:重复行若同时入池,worker 的存在性双查均早于任一方写盘
+    paths = list(dict.fromkeys(paths))
     ok = skipped = ignored = failed = 0
     todo: list[str] = []
     for p in paths:

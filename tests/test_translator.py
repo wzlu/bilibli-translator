@@ -516,6 +516,40 @@ def test_run_batch_source_gone_translation_exists_skipped(tmp_path, capsys):
     assert "汇总: 成功 0,跳过 1,忽略 0,失败 0" in capsys.readouterr().err
 
 
+def test_run_batch_duplicate_entries_translated_once(monkeypatch, tmp_path, capsys):
+    # 同一文件在列表中出现多行:去重后仅提交一个翻译任务(消除并行双译竞态)
+    p = tmp_path / "a.md"
+    p.write_text("# Hi", encoding="utf-8")
+    submitted: list[str] = []
+
+    def fake(src_path, *, force, glossary, api_base, model, repair, ollama=False, fmt=None):
+        submitted.append(src_path)
+        return translator.TranslateResult("ok", src_path + "_zh")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    rc = translator.run_batch([str(p), str(p)], force=False, glossary=[],
+                              api_base="http://x", model="m", max_threads=2)
+    assert rc == translator.EX_OK
+    assert submitted == [str(p)]
+    assert "汇总: 成功 1,跳过 0,忽略 0,失败 0" in capsys.readouterr().err
+
+
+def test_run_batch_duplicate_entries_skipped_once(monkeypatch, tmp_path, capsys):
+    # 译文已存在的重复条目:跳过按文件计一次,不按列表行计两次
+    p = tmp_path / "a.md"
+    p.write_text("# Hi", encoding="utf-8")
+    (tmp_path / "a_zh.md").write_text("已有", encoding="utf-8")
+
+    def fake(src_path, **k):
+        raise AssertionError(f"译文已存在不应提交翻译: {src_path}")
+
+    monkeypatch.setattr(translator, "translate_file", fake)
+    rc = translator.run_batch([str(p), str(p)], force=False, glossary=[],
+                              api_base="http://x", model="m")
+    assert rc == translator.EX_OK
+    assert "汇总: 成功 0,跳过 1,忽略 0,失败 0" in capsys.readouterr().err
+
+
 def test_run_batch_skip_warn_precedes_workers(monkeypatch, tmp_path):
     # 跳过警告在主线程前置输出,先于任何线程池工作发生
     src = tmp_path / "a.md"
