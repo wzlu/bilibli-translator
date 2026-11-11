@@ -5,7 +5,11 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.2] - 2026-11-11
+
+### 修复
+
+- 间歇性 `412 Client Error: Precondition Failed` 导致整文翻译失败(退出 75),手动稍后重试即成功:重试循环内**没有任何等待**,`RETRY_TIMES = 2` 的三次尝试在数十毫秒内打光,网关侧瞬时状态(抖动/限流)来不及消退故三次全败。现加入指数退避(`RETRY_BACKOFF = 1.0`,间隔 1s、2s);同时区分状态码——408/412/429、5xx 与网络错误可重试,其余 4xx 源于请求本身(如参数非法)立即失败,避免退避把必然失败的请求拖得更慢。该缺陷此前已在 CLAUDE.md 记为「无谓快速重试(无退避)」但未修
 
 ### 变更
 
@@ -180,7 +184,7 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
-[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.7.1...HEAD
+[0.7.2]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.2
 [0.7.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.1
 [0.7.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.0
 [0.6.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.6.0
