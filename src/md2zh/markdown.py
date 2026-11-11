@@ -147,22 +147,25 @@ def split_blank_lines(text: str) -> list[str]:
 def _split_oversized(block: str) -> list[str]:
     """超过 FORCE_SPLIT_LIMIT 的块按空白边界强制切分,否则原样返回单元素列表。
 
-    优先在换行处切(表格/列表按行自然断开),无换行时退到空格(爬取页面的
-    超长单行)。占位符令牌不含空白,故切点永不落在令牌内部;整块无空白时
-    保持完整(HTML 令牌块与病理串),由输出预算封顶兜底。
+    优先在换行处切(表格/列表按行自然断开),换行切点缺失或过早时退到空格
+    (爬取页面的超长单行)。占位符令牌不含空白,故切点永不落在令牌内部;
+    两者都无可用切点时保持完整,由输出预算封顶兜底。
     """
     if len(block) <= FORCE_SPLIT_LIMIT:
         return [block]
     pieces: list[str] = []
     while len(block) > FORCE_SPLIT_LIMIT:
         cut = block.rfind("\n", 0, FORCE_SPLIT_LIMIT)
-        if cut < 0:
+        if cut + 1 < FORCE_SPLIT_LIMIT // 2:
             # shortcut: 切点只认 \n 与空格、不认 \t,故纯 tab 分隔的超长块(如 TSV)
             # 无切点、退化为整块送译;出现 TSV 类输入时把 \t 加进切点集合
+            # 换行切点缺失或过早(如块首只有一个令牌后的换行)→ 退到空格切点
             cut = block.rfind(" ", 0, FORCE_SPLIT_LIMIT)
-        if cut < 0:
-            # shortcut: 无空白切点的超长块(HTML 令牌块、无空白病理串)不切分,整块送译
-            # 靠 MAX_TOKENS_CEILING 兜底,译文可能被截断且无 finish_reason 检测;
+        if cut + 1 < FORCE_SPLIT_LIMIT // 2:
+            # shortcut: 无可用切点、或切点过早(切完仍留一个超限尾巴)的超长块不切分,
+            # 整块送译靠 MAX_TOKENS_CEILING 兜底,译文可能被截断且无 finish_reason 检测。
+            # 过早切分毫无收益还有害:产出的微小首片(如表格行的 "| ")会独占一次 API
+            # 调用,模型对其返回空白即触发「API 返回空结果」→ 整文件退出 75。
             # 观测到此类块被截断或遭网关拒绝时,再引入令牌感知的硬切
             break
         pieces.append(block[:cut + 1])  # 分隔符随前段,与 split_blank_lines 归属一致

@@ -210,6 +210,26 @@ def test_pack_blocks_whitespace_free_oversized_kept_whole():
     assert markdown.pack_blocks([block], 3000) == [block]
 
 
+def test_pack_blocks_degenerate_early_cut_kept_whole():
+    # 前 FORCE_SPLIT_LIMIT 内只有一个极早的空格(如表格行的 "| " 后接超长
+    # 不含空白的单元格:base64/长 hash/压缩 JSON)。在那里切只会产出一个
+    # 微小首片(浪费一次 API 调用、模型返回空白会让整文件退出 75),且尾巴
+    # 仍然超限、切了等于没切 → 放弃切分,整块保留走预算封顶
+    block = "| " + "a" * (markdown.FORCE_SPLIT_LIMIT + 2000)
+    assert markdown.pack_blocks([block], 3000) == [block]
+
+
+def test_pack_blocks_falls_back_to_space_when_newline_cut_degenerate():
+    # 块首只有一个早换行(如占位符令牌后的换行),但后文空格充足:
+    # 换行切点过早时应退到空格切点,而不是放弃切分、留下超限块
+    block = "@@@CODEBLOCK_0@@@\n" + "word " * 2000
+    assert len(block) > markdown.FORCE_SPLIT_LIMIT
+    chunks = markdown.pack_blocks([block], 3000)
+    assert "".join(chunks) == block
+    assert len(chunks) > 1
+    assert max(len(c) for c in chunks) <= markdown.FORCE_SPLIT_LIMIT
+
+
 def test_chunk_text_long_single_line_bounded():
     # 端到端:无空行超长文档分块后每块受限且拼接恒等
     text = "# T\n\n" + "word " * 3000

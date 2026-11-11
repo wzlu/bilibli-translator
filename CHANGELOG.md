@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- 强制切分在「切点过早」时会产出微小首片,可导致**整个文件翻译失败退出 75**(v0.7.1 引入的回归):`_split_oversized` 此前无条件采纳找到的第一个切点,当超长块在前 6000 字符内只有一个极早的空白时(如表格行 `"| "` 后接一长串不含空白的单元格——base64、长 hash、压缩 JSON 都会这样),会切出一个 2 字符的首片。该碎片独占一次完整 API 请求(实测 prompt 152 字符、输出预算 4096),模型对无可译内容返回空白即触发 `API 返回空结果`,重试耗尽后异常上抛,`translate_file` 映射为退出码 75;同时产生一条假的「表格行数不一致」警告,并把表格行的 `| ` 标记从行内容上切下来。且这种切分毫无收益——剩下的尾巴仍超过 `FORCE_SPLIT_LIMIT`。现改为:换行切点缺失或过早(首片不足 `FORCE_SPLIT_LIMIT // 2`)时退到空格切点,两者都过早则放弃切分、整块保留走输出预算封顶
+
 ## [0.7.2] - 2026-11-11
 
 ### 修复
@@ -184,6 +190,7 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.7.2...HEAD
 [0.7.2]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.2
 [0.7.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.1
 [0.7.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.0
