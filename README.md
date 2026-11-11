@@ -4,7 +4,6 @@
 
 ![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)
 ![Version](https://img.shields.io/badge/version-0.7.1-brightgreen)
-![Tests](https://img.shields.io/badge/tests-263%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## 目录
@@ -172,7 +171,7 @@ POST http://localhost:11434/v1/chat/completions
 ## 开发
 
 ```bash
-python -m pytest -v            # 运行全部测试(263 项,API 已 mock,不依赖网络)
+python -m pytest -v            # 运行全部测试(API 已 mock,不依赖网络)
 python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ```
 
@@ -195,7 +194,7 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 ├── src/md2zh/          # cli(参数与退出码) / api(请求与提示词) / markdown(块解析与共享分段)
 │                       # checks(格式校验) / translator(编排与批量) / ignore(忽略列表)
 │                       # formats(格式注册表) / html(HTML 适配器) / txt(TXT 适配器)
-├── tests/              # 263 项测试,API 全 mock
+├── tests/              # pytest 测试,API 全 mock
 ├── data/               # 手工验证样例(sample_en.md/html/txt)
 ├── docs/superpowers/   # 设计规格与实施计划
 └── references/         # Bilibili 官方参考实现(保持不动)

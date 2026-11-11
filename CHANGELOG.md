@@ -5,6 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 变更
+
+- 版本号改为**单一来源**:`pyproject.toml` 移除 `[project].version`,改由 `dynamic = ["version"]` + `[tool.setuptools.dynamic] version = {attr = "md2zh.__version__"}` 从 `src/md2zh/__init__.py` 取值。此前版本号散落 5 处(pyproject / `__init__.py` / `test_version.py` / README 徽章 / CLAUDE.md),历史上有 10 个提交(约占总数 6%)纯粹为同步这些数字而存在
+- 引入 commitizen 配置(**仅 bump 与 check,不生成 CHANGELOG**):`cz bump` 一次精确改动 4 个文件各 1 行(`__init__.py`、`[tool.commitizen].version`、README 徽章、CLAUDE.md「当前版本」),不误伤 CLAUDE.md 里的历史版本记述;`[tool.commitizen.customize]` 在 Conventional Commits 默认类型上追加本仓库既有的 `release` 类型(改工具认约定,而非改 167 个历史提交)。刻意**不列入 dev 依赖**——commitizen 要求 `argcomplete<3.7` 而 pipx 要求 `>=3.7.2`,同环境共存会破坏 pipx(已实测踩到并修复),故用 `pipx run --spec commitizen cz ...` 隔离执行
+- 文档不再硬编码易失数字:移除 README 的 `tests-N passed` 徽章(仓库无 CI,静态徽章无法验证且必然陈旧),README/CLAUDE.md 正文的「263 项测试」改为「全部测试」,CLAUDE.md 的「最新 tag v0.7.1」改为「见 `git describe --tags`」。历史记录(如 Recent Updates 里的「256/256 测试通过」)属事实记载,保持原样
+- `tests/test_version.py` 不再断言硬编码版本号(否则每次 bump 都要跟着改),改为校验 semver 格式 + 「`__version__` == 包元数据 version」,后者正是 `dynamic` 配置失效的哨兵
+
 ## [0.7.1] - 2026-11-11
 
 ### 修复
@@ -171,6 +180,7 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
+[Unreleased]: https://github.com/wzlu/bilibli-translator/compare/v0.7.1...HEAD
 [0.7.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.1
 [0.7.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.0
 [0.6.0]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.6.0

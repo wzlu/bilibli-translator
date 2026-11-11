@@ -47,11 +47,13 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(263 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(API 全部 mock,不依赖真实网络;**测试数不在文档中硬编码**,以免每次增删测试都要额外同步一轮文档);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见各版规格(md 基线 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;多格式 `2026-10-15-multiformat-html-txt-design.md` §6)
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
-- 提交信息以 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 结尾
+- 提交信息以 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 结尾;遵循 Conventional Commits(`feat`/`fix(scope)`/`docs`/`test`/`release`),历史已高度符合
+- **发版**:`pipx run --spec commitizen cz bump`(按提交类型自动定级,或 `--increment PATCH|MINOR|MAJOR` 显式指定)自动改版本号并打 tag;可先加 `--dry-run` 或 `--files-only` 预演。版本**单一来源**是 `src/md2zh/__init__.py`,`pyproject.toml` 经 `dynamic = ["version"]` 取值,`[tool.commitizen].version_files` 负责同步 README 徽章与 CLAUDE.md「当前版本」——发版时无需手工改任何数字(实测一次 bump 精确改动 4 个文件各 1 行,不误伤 CLAUDE.md 里的历史版本记述)。`CHANGELOG.md` **刻意手写**(条目含实证数据、根因分析与验证结果,工具生成的一行式摘要是降级),发版时把 `[Unreleased]` 改名并补链接引用。commitizen **不列入 dev 依赖**:它要求 `argcomplete<3.7`,与 pipx 的 `>=3.7.2` 互斥,装进同一环境会破坏 pipx(2026-11-11 实测踩过并已修复),故一律用 `pipx run --spec commitizen cz ...` 隔离执行
+- `tests/test_version.py` 不再硬编码版本号(否则每次 bump 都要改),改为校验 semver 格式与「`__version__` == 包元数据 version」——后者正是 `dynamic` 配置失效的哨兵
 - 子代理驱动开发(SDD)台账:`.superpowers/sdd/progress.md`(任务完成记录与提交哈希)
 
 ## API Documentation
@@ -152,4 +154,6 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - v0.7.1 已知限制(强制切分):切点只识别换行与空格,不识别制表符——仅含 tab 分隔的超长块(如 TSV)无切点,保持完整走预算封顶兜底;块内几乎无空白时切点可能落在极早位置,产出一个很小的首片(如 `"| "`),拼接恒等不受影响;超过 6000 字符的大表格按行拆分后各片独立校验(片段内行数/列数自洽,不产生额外警告),但译文片段不含表头行,术语一致性依赖既有的前段上下文参考
 - v0.7.1 已知限制(批量去重):去重按路径字符串精确匹配,同一文件的不同写法(`a.md` 与 `./a.md`、Windows 大小写差异)不去重——罕见且损害有界(多一次 API 调用,原子写保证结果正确);跨进程并发竞态需锁文件才能根治,维持 YAGNI 裁决
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略;确认安装为可编辑(`python -c "import md2zh; print(md2zh.__file__)"` 应指向 `src/`)——非可编辑安装会遮蔽源码改动,修复用 `pip install -e .`(2026-11-11 曾发现并修复一例)
-- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.7.1);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
+- 重装提示(2026-11-11 实测):`pip install -e .` 若遇 `d:\anaconda3\scripts\md2zh.exe` 被占用会报 `WinError 5 拒绝访问` 并整体失败,但 pip 会自动回滚,**既有安装不受影响**(`pip show md2zh` 与 `md2zh --version` 仍正常);不要因此反复重试或手工删 site-packages,先确认安装是否已健全。`site-packages` 下 `~` 开头的垃圾目录属其他包(websockets/pydantic_core/yaml)的历史残留,与本项目无关
+- 提交信息门禁:`pipx run --spec commitizen cz check --rev-range <上一个 tag>..HEAD`。全历史范围(`v0.1.0..HEAD`)会稳定报 1 条——`dfe98d4`(subject 误粘贴成 `modified:   .gitignore`),改写已发布历史代价过高故保留原样;日常只需校验新增提交
+- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag 见 `git describe --tags`,不在文档中硬编码);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
