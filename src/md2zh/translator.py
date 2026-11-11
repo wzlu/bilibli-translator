@@ -210,7 +210,7 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
     half = CONTEXT_TAIL // 2
     for chunk in fmt.chunk_text(text, CHUNK_SIZE):
         # 不可分割的超限块(如大表格)按块长放大输出预算,避免确定性截断;
-        # 封顶于网关上限,否则特大块(如约 19K 字符表格)触发 invalid_request 整文失败
+        # 封顶于网关上限(可切分的巨块已由 markdown.FORCE_SPLIT_LIMIT 强制切分)
         budget = min(max(MAX_TOKENS_CHUNK, len(chunk) * 2 + 200), MAX_TOKENS_CEILING)
         translated = _translate_chunk(chunk, glossary, api_base, model,
                                       budget, context=prev_context, source=source,

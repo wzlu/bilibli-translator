@@ -1,3 +1,5 @@
+import re
+
 from md2zh import markdown
 
 
@@ -164,3 +166,53 @@ def test_pack_blocks_oversized_kept_whole():
 def test_pack_blocks_empty_blocks_merged_into_neighbor():
     # 空块并入相邻块(与 chunk_text 现行为一致),join 不变量不受影响
     assert markdown.pack_blocks(["", "a"], 10) == ["a"]
+
+
+def test_pack_blocks_force_splits_multiline_oversized_at_newline():
+    # 超过强制切分阈值的块按换行切分:拼接恒等,每片不超阈值
+    block = "".join(f"line {i} " + "x" * 50 + "\n" for i in range(300))
+    assert len(block) > markdown.FORCE_SPLIT_LIMIT
+    chunks = markdown.pack_blocks([block], 3000)
+    assert "".join(chunks) == block
+    assert len(chunks) > 1
+    assert max(len(c) for c in chunks) <= markdown.FORCE_SPLIT_LIMIT
+
+
+def test_pack_blocks_force_splits_long_single_line_at_space():
+    # 无换行的超长单行(爬取页面常见,网关拒绝的真实形态)按空格切分
+    block = "word " * 3000  # 15000 字符,无换行
+    chunks = markdown.pack_blocks([block], 3000)
+    assert "".join(chunks) == block
+    assert len(chunks) > 1
+    assert max(len(c) for c in chunks) <= markdown.FORCE_SPLIT_LIMIT
+
+
+def test_pack_blocks_force_split_keeps_placeholder_atomic():
+    # 占位符令牌不含空白,强制切分永不切断令牌(切断则还原损坏)
+    block = ("@@@CODEBLOCK_0@@@ " + "word " * 400) * 5
+    assert len(block) > markdown.FORCE_SPLIT_LIMIT
+    chunks = markdown.pack_blocks([block], 3000)
+    assert "".join(chunks) == block
+    pat = re.compile(r"@@@CODEBLOCK_\d+@@@")
+    assert [t for c in chunks for t in pat.findall(c)] == pat.findall(block)
+
+
+def test_pack_blocks_under_force_split_limit_kept_whole():
+    # 未达强制切分阈值的超限块仍保持完整(既有行为,如大表格)
+    table = "| a | b |\n" * 100  # 900 字符
+    assert len(table) < markdown.FORCE_SPLIT_LIMIT
+    assert markdown.pack_blocks([table], 80) == [table]
+
+
+def test_pack_blocks_whitespace_free_oversized_kept_whole():
+    # 整块无空白(HTML 令牌块/病理串)无安全切点,保持完整交预算封顶兜底
+    block = "x" * (markdown.FORCE_SPLIT_LIMIT + 1)
+    assert markdown.pack_blocks([block], 3000) == [block]
+
+
+def test_chunk_text_long_single_line_bounded():
+    # 端到端:无空行超长文档分块后每块受限且拼接恒等
+    text = "# T\n\n" + "word " * 3000
+    chunks = markdown.chunk_text(text, 3000)
+    assert "".join(chunks) == text
+    assert max(len(c) for c in chunks) <= markdown.FORCE_SPLIT_LIMIT

@@ -263,23 +263,46 @@ def test_oversized_chunk_budget_scaled(monkeypatch, tmp_path):
 
 def test_oversized_chunk_budget_capped(monkeypatch, tmp_path):
     # 特大块预算封顶于网关 max_tokens 上限:原公式 len*2+200 超限会被网关
-    # 以 invalid_request 拒绝(实证 38106 拒、16384 通过),整个文件翻译失败
-    big_table = "| " + "a" * 10000 + " | b |\n"
+    # 以 invalid_request 拒绝(实证 38106 拒、16384 通过),整个文件翻译失败。
+    # 可切分的块已由 FORCE_SPLIT_LIMIT 强制切分,封顶仅对无空白切点的块生效
+    big_block = "a" * 10000 + "\n"
     src = tmp_path / "big.md"
-    src.write_text(big_table, encoding="utf-8")
+    src.write_text(big_block, encoding="utf-8")
     monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
     budgets = []
 
     def fake(api_base, model, prompt, max_tokens, ollama=False):
         budgets.append(max_tokens)
-        return big_table.rstrip()
+        return big_block.rstrip()
 
     monkeypatch.setattr(api, "translate_text", fake)
     result = translator.translate_file(str(src), force=False, glossary=[],
                                        api_base="http://x", model="m")
     assert result.status == "ok"
-    assert len(big_table) * 2 + 200 > translator.MAX_TOKENS_CEILING  # 公式值确实超限
-    assert budgets[0] == translator.MAX_TOKENS_CEILING  # 被封顶
+    assert len(big_block) * 2 + 200 > translator.MAX_TOKENS_CEILING  # 公式值确实超限
+    assert budgets == [translator.MAX_TOKENS_CEILING]  # 单块且被封顶
+
+
+def test_long_single_line_split_into_bounded_calls(monkeypatch, tmp_path):
+    # 回归:无空行的超长单行(爬取页面)曾被当作单块送出,预算触顶后被网关按
+    # 「prompt+max_tokens 总量」拒绝(退出 75),退到可接受预算则译文静默截断。
+    # 强制切分后应产生多次调用,且每次预算都在封顶值以下
+    long_line = "word " * 3000  # 15000 字符,无空行
+    src = tmp_path / "long.md"
+    src.write_text(long_line, encoding="utf-8")
+    monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
+    budgets = []
+
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
+        budgets.append(max_tokens)
+        return "译文"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    result = translator.translate_file(str(src), force=False, glossary=[],
+                                       api_base="http://x", model="m")
+    assert result.status == "ok"
+    assert len(budgets) > 1  # 巨块已被切分为多次调用
+    assert all(b < translator.MAX_TOKENS_CEILING for b in budgets)  # 预算不再触顶
 
 
 def test_parse_filelist(tmp_path):

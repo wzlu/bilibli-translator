@@ -125,6 +125,11 @@ def restore_code_blocks(text: str, mapping: dict[str, str]) -> str:
 
 _TABLE_LIST_RE = re.compile(r"^\s*(\||[-*+]|\d+\.)\s+")
 
+# 块长硬上限:网关按「prompt + max_tokens」总量限制(实证 ≈24576 tokens),
+# 输出预算封顶 16384(见 translator.MAX_TOKENS_CEILING),英文 markdown 实测
+# 约 2.6~3.9 字符/token,故 6000 字符块的总量约 1.8 万 tokens,留 ≥25% 余量。
+FORCE_SPLIT_LIMIT = 6000
+
 
 def split_blank_lines(text: str) -> list[str]:
     """按空行切分并保留分隔符(分隔符并入前段)。"""
@@ -137,17 +142,45 @@ def split_blank_lines(text: str) -> list[str]:
     return blocks
 
 
+def _split_oversized(block: str) -> list[str]:
+    """超过 FORCE_SPLIT_LIMIT 的块按空白边界强制切分,否则原样返回单元素列表。
+
+    优先在换行处切(表格/列表按行自然断开),无换行时退到空格(爬取页面的
+    超长单行)。占位符令牌不含空白,故切点永不落在令牌内部;整块无空白时
+    保持完整(HTML 令牌块与病理串),由输出预算封顶兜底。
+    """
+    if len(block) <= FORCE_SPLIT_LIMIT:
+        return [block]
+    pieces: list[str] = []
+    while len(block) > FORCE_SPLIT_LIMIT:
+        cut = block.rfind("\n", 0, FORCE_SPLIT_LIMIT)
+        if cut < 0:
+            cut = block.rfind(" ", 0, FORCE_SPLIT_LIMIT)
+        if cut < 0:
+            break  # 无空白切点:剩余部分保持完整
+        pieces.append(block[:cut + 1])  # 分隔符随前段,与 split_blank_lines 归属一致
+        block = block[cut + 1:]
+    pieces.append(block)
+    return pieces
+
+
 def pack_blocks(blocks: list[str], max_chars: int) -> list[str]:
-    """贪心装包:按序装入不超过 max_chars 的块;超限块保持完整。"""
+    """贪心装包:按序装入不超过 max_chars 的块;超限块保持完整。
+
+    超过 FORCE_SPLIT_LIMIT 的块先按空白强制切分再装包:否则单次请求的
+    prompt 与输出预算之和会超出网关总量上限,导致 invalid_request 整块失败,
+    或退到可接受的预算后译文被静默截断。
+    """
     chunks: list[str] = []
     current: list[str] = []
     size = 0
     for block in blocks:
-        if current and size + len(block) > max_chars:
-            chunks.append("".join(current))
-            current, size = [], 0
-        current.append(block)
-        size += len(block)
+        for piece in _split_oversized(block):
+            if current and size + len(piece) > max_chars:
+                chunks.append("".join(current))
+                current, size = [], 0
+            current.append(piece)
+            size += len(piece)
     if current:
         chunks.append("".join(current))
     return chunks
@@ -167,7 +200,8 @@ def _logical_blocks(text: str) -> list[str]:
 def chunk_text(text: str, max_chars: int = 3000) -> list[str]:
     """按逻辑边界切分文本;所有段按序拼接与原文完全一致。
 
-    超出 max_chars 的不可分割块(如大表格)保持完整,不做切割。
+    超出 max_chars 但不足 FORCE_SPLIT_LIMIT 的不可分割块(如大表格)保持完整;
+    超过 FORCE_SPLIT_LIMIT 的块按空白边界强制切分(见 pack_blocks)。
     """
     return pack_blocks(_logical_blocks(text), max_chars)
 
