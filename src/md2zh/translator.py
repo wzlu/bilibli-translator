@@ -26,7 +26,9 @@ CHUNK_SIZE = 3000
 CONTEXT_TAIL = 800          # 分段时附前段上下文参考的字符数
 MAX_TOKENS_SINGLE = 8192
 MAX_TOKENS_CHUNK = 4096
-MAX_TOKENS_CEILING = 16384  # 网关 max_tokens 上限:超限返回 invalid_request(实证 38106 拒、16384 通过)
+# 网关 max_tokens 上限:超限返回 invalid_request(实证 38106 拒、16384 通过)。
+# shortcut: 16384 是公共网关实证值、非文档规格;网关调整上限或换后端时需重新标定
+MAX_TOKENS_CEILING = 16384
 
 _stderr_lock = threading.Lock()
 

@@ -128,6 +128,8 @@ _TABLE_LIST_RE = re.compile(r"^\s*(\||[-*+]|\d+\.)\s+")
 # 块长硬上限:网关按「prompt + max_tokens」总量限制(实证 ≈24576 tokens),
 # 输出预算封顶 16384(见 translator.MAX_TOKENS_CEILING),英文 markdown 实测
 # 约 2.6~3.9 字符/token,故 6000 字符块的总量约 1.8 万 tokens,留 ≥25% 余量。
+# shortcut: 6000 是从公共网关实证反推的经验值,非网关文档规格;
+# 网关调整总量上限或换后端(如 ollama)时需重新标定
 FORCE_SPLIT_LIMIT = 6000
 
 
@@ -155,9 +157,14 @@ def _split_oversized(block: str) -> list[str]:
     while len(block) > FORCE_SPLIT_LIMIT:
         cut = block.rfind("\n", 0, FORCE_SPLIT_LIMIT)
         if cut < 0:
+            # shortcut: 切点只认 \n 与空格、不认 \t,故纯 tab 分隔的超长块(如 TSV)
+            # 无切点、退化为整块送译;出现 TSV 类输入时把 \t 加进切点集合
             cut = block.rfind(" ", 0, FORCE_SPLIT_LIMIT)
         if cut < 0:
-            break  # 无空白切点:剩余部分保持完整
+            # shortcut: 无空白切点的超长块(HTML 令牌块、无空白病理串)不切分,整块送译
+            # 靠 MAX_TOKENS_CEILING 兜底,译文可能被截断且无 finish_reason 检测;
+            # 观测到此类块被截断或遭网关拒绝时,再引入令牌感知的硬切
+            break
         pieces.append(block[:cut + 1])  # 分隔符随前段,与 split_blank_lines 归属一致
         block = block[cut + 1:]
     pieces.append(block)
