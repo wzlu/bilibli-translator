@@ -29,7 +29,7 @@
 - **frontmatter 独立翻译**:仅译 value,key 与 `---` 标记由提示词约束保持,不校验、不重译、不回退
 - **术语表**:`--glossary` 指定 JSON 文件(`{"英文": "中文"}`);缺省自动加载 `~/.config/md2zh/glossary.json`(不存在视为无术语表);以【硬性要求】专名/术语对照附加到每段请求
 - **忽略列表**:`--filelist` 批量模式自动读取当前目录 `.translateignore`(不存在视为无规则);命中文件略过不翻译,计入汇总「忽略」数(交叉情形:非 `--force` 且译文已存在时计「跳过」;忽略优先于扩展名/存在性检查与 `--force` 不变)
-- **批量多线程**:`--filelist` 用 ThreadPoolExecutor(默认 10,可 `-c` 调整)并行翻译,译文已存在(非 `--force`)与忽略命中均前置不提交,完成即输出(乱序),计数与汇总在主线程聚合;未知异常兜底计失败;任意基类异常(中断/下游管道关闭)取消未启动任务后重抛,不等待运行中请求;批量 stderr 串行化:批量模式线程内与主线程的 stderr 打印统一经模块级锁 `_warn` 串行化,消除行间交错;stdout 仅主线程写
+- **批量多线程**:`--filelist` 用 ThreadPoolExecutor(默认 10,可 `-c` 调整)并行翻译,列表重复条目入口保序去重(同一文件单次运行至多一个任务,消除重复行并行双译竞态),译文已存在(非 `--force`)与忽略命中均前置不提交,完成即输出(乱序),计数与汇总在主线程聚合(按文件计一次,不按列表行重复计);未知异常兜底计失败;任意基类异常(中断/下游管道关闭)取消未启动任务后重抛,不等待运行中请求;批量 stderr 串行化:批量模式线程内与主线程的 stderr 打印统一经模块级锁 `_warn` 串行化,消除行间交错;stdout 仅主线程写
 - **本地 ollama 后端**:`--ollama` 经布尔标志贯穿(cli→translator→api),ollama 分支省略 `chat_template_kwargs` 与特殊 UA(仅 B 站网关 412 要求);强制单线程在 CLI 层完成(`max_threads=1`),translator 线程池逻辑不变
 - **换行保真**:文件模式 CRLF 源输出 CRLF,LF 源输出 LF(读取期关闭行尾翻译、检测后管线内部统一 LF、写回源风格);stdin 模式统一 LF 输出(写前折叠混入的 CRLF)
 - **stdin 字节保真**:`md2zh -` 译文经 `sys.stdout.buffer` 字节写出(绕开平台行尾翻译),结尾无换行时补一个 `\n`;空输入直接成功退出不调 API
@@ -46,7 +46,7 @@ python -m pip install -e ".[dev]"
 ## Development Workflow
 
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
-- 测试:`python -m pytest -v`(252 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
+- 测试:`python -m pytest -v`(254 项,API 全部 mock,不依赖真实网络);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见各版规格(md 基线 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;多格式 `2026-10-15-multiformat-html-txt-design.md` §6)
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
@@ -71,7 +71,7 @@ POST {api_base}/chat/completions   # 默认 https://index-translate.bilibili.com
 md2zh FILE | md2zh - | md2zh --filelist LIST [选项]   # txt2zh 为同一入口的别名
   FILE              .md/.markdown/.html/.htm/.txt(格式按扩展名推断,可被 --format 覆盖)
   --format FMT      输入格式 md/html/txt(默认按扩展名推断;stdin 模式缺省 md;批量模式显式值全局覆盖)
-  --filelist LIST   文件列表(每行一个文件,# 注释行忽略)
+  --filelist LIST   文件列表(每行一个文件,# 注释行忽略;重复行保序去重)
   -c/--max-threads N   --filelist 模式最大线程数(默认 10;仅批量生效)
   --force           覆盖已存在的 *_zh.<原扩展名>(默认跳过)
   --repair N        校验失败后的重译次数 0-2(默认 0;失败一律采用译文)
@@ -100,7 +100,9 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]   # txt2zh 为同一入口
 └── references/call_api.py   # Bilibili 官方参考实现,保持不动
 ```
 
-## Recent Updates (Updated: 2026-10-22)
+## Recent Updates (Updated: 2026-11-11)
+
+批量重复条目去重(2026-11-11,工作区改动,未提交):`run_batch` 入口增加 `dict.fromkeys` 保序去重——此前 filelist 中同一文件出现多行且译文尚不存在时,各行均通过存在性前置检查并进入线程池,worker 双查(translator.py:81)均早于任一方写盘,导致重复调用 API(进程内双译竞态);现同一文件单次运行至多一个任务,汇总按文件计一次(重复条目的「跳过/成功」不再按行重复计,如译文已存在的重复行由「跳过 2」改为「跳过 1」);`--force` 仍为显式覆盖,单文件模式与 worker 双查逻辑不变。新增 2 项测试锁定语义(重复条目仅翻译一次、译文已存在重复条目跳过计一次),254/254 通过。跨进程并发(两个 md2zh 进程跑重叠列表)的 TOCTOU 竞态仍在,无锁文件(YAGNI 裁决)。顺带环境修复:发现 anaconda 中 md2zh 为非可编辑安装(site-packages 副本遮蔽 `src/` 改动,此前测试实际运行的是安装副本),清理 pip 卸载中断残留(`~d2zh` 垃圾目录)后重装 `pip install -e .`,导入直指 `src/`,`md2zh`/`txt2zh` CLI 入口实测正常。
 
 v0.7.0 批量前置判断顺序优化:6028b50..ea9f092 共 6 个提交(规格 + 计划 + 任务 1-3 实施 + 终审修复波),本提交为发布文档与版本号同步;252/252 测试通过。`run_batch` 前置判断顺序改为「译文已存在(非 `--force`)→ 忽略名单 → 提交线程池」:已存在译文的文件在主线程 1 次 stat 即跳过,不再做忽略匹配与线程池提交(重跑场景效率与命中率分布对齐);`translate_file` 保持不动(worker 内双查防 TOCTOU、供 run_single 复用)。语义变更(用户裁决):交叉情形(译文已存在且命中忽略,非 force)由计「忽略」改为计「跳过」;跳过警告由随完成乱序改为前置按文件列表顺序;源文件已删但译文存在由「失败(66)」改为「跳过」。终审修复波:锁定 `--force` 忽略优先的汇总断言、术语统一为「忽略列表」。真实 API 手工验证(增量重跑场景)5/5 实测完成:①首轮批量 2/2 成功;②重跑跳过 2/2(跳过警告前置按序输出,退出 0);③交叉情形(译文已存在且命中忽略)计「跳过 1、忽略 0」;④`--force` 重译成功;⑤`--force` 下忽略优先不变(命中忽略文件仍计「忽略」)。发布门槛通过。
 
@@ -141,5 +143,6 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - v0.7.0 已知限制(终审随行发布):目录名恰好为 `*_zh.<扩展名>`(如 `a_zh.md` 是目录)时,前置 exists 会将其误判为已存在译文而跳过(§4.3.3 同型病理,重命名目录即恢复);跳过警告在批量模式统一前置输出,不再与完成输出交错(按设计)
 - v0.6.0 已知限制(终审随行发布):HTML 属性(alt/title/placeholder)不译,`lang`/`meta` 不改写;HTML5 双重转义态(如 script 内 `<!--<script>`)与 textarea/title 的 RCDATA 语义不特判,CDATA 内含 `>` 在首个 `>` 截断;正文以 `<`+字母 开头(如 `<apple`)误判为标签,最坏该段误保护不翻译;畸形 HTML(未闭合标签/引号)余文不保护地进入送译文本(protect→restore 往返恒等;译文若改写余文将触发裸字符校验警告);模型可能自造 `**` 等非 HTML 格式标记(提示词硬约束缓解,校验无法拦截);源文字面 `@@@...@@@` 与占位符令牌冲突概率极低(与 md 同取舍);minified HTML 依赖占位符令牌边界分段,超长单块保持完整(按块长缩放输出预算);未知扩展名回落 md;`txt2zh` 调用的 stderr 前缀仍为 `md2zh:`;库级 fmt 非法值仅库调用可达
 - 忽略列表已知限制(规格 §11):无 `**` 的相对模式可能轻微过匹配段边界(如 `docs/a*.md` 会命中 `xdocs/a.md`);含字面 `*`/`?` 的路径按通配处理;不支持 `!` 反排除与逐目录继承;目录模式为直接子文件语义(与 ds-translator 追加 `**` 的递归行为略有差异)。项目根 `.translateignore` 为用户本地文件(已入 .gitignore,不入库)
-- 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略
-- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.6.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
+- 批量去重已知限制(2026-11-11 修复随行):去重按路径字符串精确匹配,同一文件的不同写法(`a.md` 与 `./a.md`、Windows 大小写差异)不去重——罕见且损害有界(多一次 API 调用,原子写保证结果正确);跨进程并发竞态需锁文件才能根治,维持 YAGNI 裁决
+- 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略;确认安装为可编辑(`python -c "import md2zh; print(md2zh.__file__)"` 应指向 `src/`)——非可编辑安装会遮蔽源码改动,修复用 `pip install -e .`(2026-11-11 曾发现并修复一例)
+- 远程仓库:https://github.com/wzlu/bilibli-translator(main 跟踪 origin/main,最新 tag v0.7.0);`temp/`、`reports/`、`.superpowers/` 由 .gitignore 忽略,`.serena/`、`.pytest_cache/` 有意不入库
