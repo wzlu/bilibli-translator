@@ -49,6 +49,7 @@ python -m pip install -e ".[dev]"
 - **严格 TDD**:先写失败测试 → 确认 RED → 最小实现 → 确认 GREEN → 提交
 - 测试:`python -m pytest -v`(API 全部 mock,不依赖真实网络;**测试数不在文档中硬编码**,以免每次增删测试都要额外同步一轮文档);报告输出 `python -m pytest -v --junitxml=reports/junit.xml`
 - **真实 API 不进自动化测试**;手工验证清单见各版规格(md 基线 `docs/superpowers/specs/2026-10-12-md2zh-translator-design.md` §13;多格式 `2026-10-15-multiformat-html-txt-design.md` §6)
+- **真实 API 探针的判读规则**:定位网关类问题走「静态重放分块管线(零 API 调用)→ 单变量真实探针」两步。探针**不能只看有没有 error 分片就判成功**——内容分片数 ≈ `max_tokens` 即为触顶截断(2026-11-12 实测踩过:60000 字符 frontmatter 返回 8193 分片 / 预算 8192,看似通过实为截断)。同类假阳性还有 `-k` 过滤后零用例执行(见 Recent Updates 2026-11-11 变异测试段)。**结论必须由计算得出,不能由「没报错」推出**
 - 目录规则:源码 `src/`、测试 `tests/`、样例数据 `data/`、报告 `reports/`、临时文件 `temp/`
 - 代码注释与用户可见输出一律中文
 - **刻意取舍留痕**:有意为之的简化(经验常量、未覆盖的输入形态、暂不做的健壮性)须在代码处写 `shortcut: <局限>, <何时升级>` 形式的**注释**(前面带该语言的注释符),使 `/ponytail-debt` 能扫出台账。本文档刻意不写出带注释符的完整样例,否则会被扫描器当成一条真债(实测踩过)。只写进 CLAUDE.md/CHANGELOG 散文里的取舍**不可 grep、易静默变永久**(2026-11-11 曾有一条「退避无 jitter」只存在于对话历史,连文档都没进);散文可补充细节,但行内标记是台账的唯一入口
@@ -100,6 +101,7 @@ md2zh FILE | md2zh - | md2zh --filelist LIST [选项]   # txt2zh 为同一入口
 ├── tests/               # pytest:test_markdown / test_checks / test_api / test_translator / test_cli / test_version / test_ignore / test_formats / test_html / test_txt
 ├── data/                # 手工验证样例(sample_en.md/html/txt;真实 API 产物 *_zh.* 不入库)
 ├── reports/             # 测试报告(生成物,gitignore)
+├── temp/                # 临时脚本、静态重放与真实 API 探针产物(gitignore)
 ├── docs/superpowers/    # specs/(规格) 与 plans/(实施计划)
 └── references/call_api.py   # Bilibili 官方参考实现,保持不动
 ```
@@ -166,7 +168,7 @@ v0.1.0 初版完成:12 个任务全部落地(20 个提交,主分支 main),终审
 - v0.7.1 已知限制(批量去重):去重按路径字符串精确匹配,同一文件的不同写法(`a.md` 与 `./a.md`、Windows 大小写差异)不去重——罕见且损害有界(多一次 API 调用,原子写保证结果正确);跨进程并发竞态需锁文件才能根治,维持 YAGNI 裁决。**重开触发**:两个 md2zh 进程并发跑重叠列表成为真实用法(届时加锁文件);或用户列表混写 `a.md` 与 `./a.md` 导致重复翻译(届时改用 `os.path.normcase`/`normpath` 归一后再去重)
 - **已明确推迟的决策(2026-11-11):永久性 API 错误的退出码语义**。现状:永久错误(参数非法、`--api-base`/`--model` 写错)与瞬时错误同样映射为退出码 75「API 临时不可用」,而 sysexits 的 75 语义是「请稍后重试」,存在偏差。**推迟理由**:①实测该网关的永久错误一律以 **HTTP 200 + SSE `error` 分片**(`invalid_request`)返回,不是 HTTP 4xx——`api.py` 新增的「非可重试 4xx 快速失败」分支针对的是**尚未观测到**的情形,唯一实测到的真实 4xx 是 412 且属瞬时;②要正确分类必须区分「本工具的 bug(如预算公式导致 `invalid_request`)」与「用户配置错误」,**分错会把用户引向排查命令行而不是报 bug**——这个三阶效应比粗粒度但诚实的 75 更糟;③新增退出码需同步 cli 映射 + README 表 + 本文件契约 + 测试,而当前无外部消费者(未发布 PyPI,靠 git clone 安装),收益不成立;④用户本轮的诉求是修间歇 412,扩到退出码体系属 scope creep。**推迟期间的默认行为**:永久错误继续退出 75(脚本按「非 0 即失败」处理不受影响;按 75 重试的脚本会对必然失败的请求多重试几次,浪费但无害)。**重新评估触发条件**(满足任一即重开):观测到永久错误以真实 HTTP 4xx 返回;或发布到 PyPI / 出现按退出码分支的外部脚本;或有用户反馈「对必然失败的请求反复重试」造成实际困扰。**可逆性**:双向门(改动量 <1 小时;采「新增码」而非「改 75 语义」即向后兼容),故不需要现在决定
 - 巨型 frontmatter 已知限制(2026-11-12):超过 `SINGLE_CALL_LIMIT`(15000 字符)的 frontmatter **一律不译、原样保留**,即使其中确有人读散文(如 gh-aw 的 42 条 JSON-schema `description`)也整块跳过——粒度是「整个 frontmatter」而非「按 key 挑散文」,因为没有 YAML 感知的价值判断;阈值 15000 是「8192 预算不截断」的推导值,不是网关 token 总量的直接标定值,故 15000~约 60000 字符之间存在一个「网关其实会接受、但译文必然被静默截断」的区间,现在统一走不译(比静默截断诚实)。**重开触发**:出现以散文为主的大 frontmatter 语料(用户报「frontmatter 里的说明文字没翻译」)——届时引入 YAML 感知的分段(仅译 `description`/`prompt` 类 value,其余原样),并给 frontmatter 补最低限度的结构校验(行数与 `---` 标记);或网关上调总量上限使 8192 预算能覆盖更长 frontmatter
-- 行尾提示:本仓库除 `LICENSE` 外**全部文件为 CRLF**,且无 `.gitattributes` 约束。用脚本批量改写文档/源码时必须按 `\r\n` 切分并以 `\r\n` 回写(读 binary→decode→`split("\r\n")`→`join("\r\n")`→写 binary);若按 `\n` 切分再拼接,追加的文本会落在行尾 `\r` 之后,产生嵌在行中的裸 CR 并把整文件行尾打乱(2026-11-11 实测踩过,`git diff` 表现为整文件 165 行全改而非预期的 9 行)。改完用 `git diff --stat` 核对改动行数是否符合预期
+- 行尾提示:本仓库除 `LICENSE` 外**全部文件为 CRLF**,且无 `.gitattributes` 约束。用脚本批量改写文档/源码时必须按 `\r\n` 切分并以 `\r\n` 回写(读 binary→decode→`split("\r\n")`→`join("\r\n")`→写 binary);若按 `\n` 切分再拼接,追加的文本会落在行尾 `\r` 之后,产生嵌在行中的裸 CR 并把整文件行尾打乱(2026-11-11 实测踩过,`git diff` 表现为整文件 165 行全改而非预期的 9 行)。改完用 `git diff --stat` 核对改动行数是否符合预期。另:bash heredoc 传递含反斜杠的 Python 源码不可靠(2026-11-12 实测 `\n` 被吃成真换行,导致插入的测试出现语法错误),生成脚本一律用 Write 工具落盘再执行、不走 heredoc
 - 环境提示:anaconda 全局 pytest-asyncio 插件会产生 `PytestDeprecationWarning`(非本项目代码所致);Pyright 对可编辑安装的 `md2zh` 导入解析警告同理可忽略;确认安装为可编辑(`python -c "import md2zh; print(md2zh.__file__)"` 应指向 `src/`)——非可编辑安装会遮蔽源码改动,修复用 `pip install -e .`(2026-11-11 曾发现并修复一例)
 - 重装提示(2026-11-11 实测):`pip install -e .` 若遇 `d:\anaconda3\scripts\md2zh.exe` 被占用会报 `WinError 5 拒绝访问` 并整体失败,但 pip 会自动回滚,**既有安装不受影响**(`pip show md2zh` 与 `md2zh --version` 仍正常);不要因此反复重试或手工删 site-packages,先确认安装是否已健全。`site-packages` 下 `~` 开头的垃圾目录属其他包(websockets/pydantic_core/yaml)的历史残留,与本项目无关
 - 提交信息门禁:`pipx run --spec commitizen cz check --rev-range <上一个 tag>..HEAD`。全历史范围(`v0.1.0..HEAD`)会稳定报 1 条——`dfe98d4`(subject 误粘贴成 `modified:   .gitignore`),改写已发布历史代价过高故保留原样;日常只需校验新增提交
