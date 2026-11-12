@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- 巨型 frontmatter 导致**整个文件翻译失败退出 75**(`网关返回错误: 请求参数或格式有误`):frontmatter 此前无条件作为**单次** API 调用发出、预算固定 `MAX_TOKENS_SINGLE`(8192),既不受 `SINGLE_CALL_LIMIT` 约束,也不受强制切分与预算封顶保护;而它是文档级翻译的**第一个**调用,故正文一个 chunk 都来不及翻译。实证:gh-aw 工作流文件 `azure-devops.md`(138922 字符)的 frontmatter 是 72471 字符的机器配置(`connectors` 65481 + `import-schema` 6982,1923 行,含 URL、正则 `pattern:`、`${{ }}` 模板表达式),prompt 72675 字符 + 8192 预算超出网关「prompt + max_tokens」总量上限(≈24576 tokens),返回 HTTP 200 + SSE `invalid_request`(1.4s 速败,三次重试同样必然失败);同一提示词模板截取前 12000 字符则正常返回 2844 个内容分片——单变量确认触发条件就是体积。现改为 frontmatter 超过 `SINGLE_CALL_LIMIT`(15000 字符)时**不送 API、原样保留**,stderr 输出一条带来源前缀的警告。同时修掉一条潜伏 bug:按实测输出比 ≈0.383 tokens/源字符,frontmatter 超过约 21000 字符时**即使网关接受**,译文也会被 8192 预算静默截断且无任何提示(实测 60000 字符那次返回正好 8193 个分片 = 触顶),而 frontmatter 路径「不校验、不重译、不回退」,截断无从发现。取舍:不分段翻译 frontmatter——该路径没有校验网,分段后模型看不到全局 YAML 结构,译坏缩进/正则/`${{ }}` 的损害不可检测,而巨型 frontmatter 实证是机器配置(本例 1923 行里仅 42 条 JSON-schema `description` 属人读散文)。
+
 ## [0.7.3] - 2026-11-11
 
 ### 修复

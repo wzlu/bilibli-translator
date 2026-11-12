@@ -106,7 +106,7 @@ def translate_file(src_path: str, *, force: bool, glossary: list[str],
 def _translate_document(text: str, glossary: list[str], api_base: str, model: str,
                         *, fmt: formats.Format | None = None, source: str = "",
                         repair: int = 0, ollama: bool = False) -> str:
-    """文档级翻译:frontmatter 独立翻译,正文按单次/分段策略处理。"""
+    """文档级翻译:frontmatter 独立翻译(超过 SINGLE_CALL_LIMIT 则原样保留),正文按单次/分段策略处理。"""
     if fmt is None:
         fmt = formats.get_format("md")
     fm, rest = fmt.split_frontmatter(text)
@@ -114,6 +114,16 @@ def _translate_document(text: str, glossary: list[str], api_base: str, model: st
 
     if fm is None:
         head = ""
+    elif len(fm) > SINGLE_CALL_LIMIT:
+        # 巨型 frontmatter(如 gh-aw 把 connectors/import-schema 机器配置全塞进 frontmatter)
+        # 原样保留不译:单次调用必被网关拒(实证 72675 字符 prompt → invalid_request),
+        # 即使被接受也会因 8192 预算静默截断(约 21000 字符起,实测 0.383 tokens/源字符);
+        # frontmatter 路径无校验网,分段翻译会撕碎 YAML 结构/正则/模板表达式且损坏不可检测
+        # shortcut: 阈值复用 SINGLE_CALL_LIMIT(即 8192 预算不截断的上界),未按网关 token
+        # 总量单独标定;巨型 frontmatter 中确有人读散文需要翻译时,再引入 YAML 感知的分段
+        prefix = f"{source}: " if source else ""
+        _warn(f"md2zh: 警告: {prefix}frontmatter 过长({len(fm)} 字符),原样保留不翻译")
+        head = fm
     else:
         head = _translate_frontmatter(fm, glossary, api_base, model, ollama=ollama)
 

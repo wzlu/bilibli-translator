@@ -210,6 +210,46 @@ def test_frontmatter_key_changed_accepted(monkeypatch, tmp_path):
     assert calls["n"] == 2               # frontmatter + 正文各一次,无重译
 
 
+
+
+def test_giant_frontmatter_kept_as_is(monkeypatch, capsys):
+    # 巨型 frontmatter 超过单次调用安全规模:不送 API、原样保留、带来源前缀警告。
+    # 实证根因:网关限「prompt + max_tokens」总量(≈24576 tokens),72471 字符 frontmatter
+    # 必被拒(invalid_request);且 8192 预算对超过约 21000 字符的 frontmatter 必然静默截断
+    calls = []
+
+    def fake(*a, **k):
+        calls.append(a)
+        return "正文译文"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    giant = "---\nconfig: " + "x" * (translator.SINGLE_CALL_LIMIT + 1) + "\n---\n"
+    result = translator._translate_document(giant + "\nBody", [], "http://x", "m",
+                                            source="docs/a.md")
+    assert len(calls) == 1                      # 仅正文一次调用,frontmatter 未送 API
+    assert "config: xxx" in result              # frontmatter 原样保留
+    assert "正文译文" in result                 # 正文照常翻译
+    err = capsys.readouterr().err
+    assert "docs/a.md" in err and "frontmatter" in err
+
+
+def test_frontmatter_at_limit_still_translated(monkeypatch):
+    # 钉住阈值比较为「>」而非「>=」:恰好等于 SINGLE_CALL_LIMIT 时仍翻译(既有行为不回归)
+    calls = []
+
+    def fake(*a, **k):
+        calls.append(a)
+        return "---\nconfig: 配置\n---"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    shell = "---\nconfig: x\n---\n"
+    # 替换掉 1 个占位字符,故 +1 才能让总长恰好落在阈值上
+    fm = shell.replace("x", "y" * (translator.SINGLE_CALL_LIMIT - len(shell) + 1))
+    assert len(fm) == translator.SINGLE_CALL_LIMIT  # 夹具自检:算错就不是在测边界
+    result = translator._translate_document(fm + "\nBody", [], "http://x", "m")
+    assert len(calls) == 2                      # frontmatter + 正文各一次
+    assert "config: 配置" in result
+
 def test_long_document_chunked(monkeypatch, tmp_path):
     src = tmp_path / "long.md"
     paras = "\n\n".join(f"第 {i} 段内容" for i in range(100))
