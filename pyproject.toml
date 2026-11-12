@@ -56,7 +56,12 @@ message_template = "{{change_type}}{% if scope %}({{scope}}){% endif %}: {{messa
 schema = "<type>(<scope>): <subject>"
 schema_pattern = '(?s)(build|bump|chore|ci|docs|feat|fix|perf|refactor|release|revert|style|test)(\(\S+\))?!?: ([^\n\r]+)((\n\n.*)|(\s*))?$'
 bump_pattern = '^(BREAKING CHANGE|feat|fix|perf|refactor)'
-bump_map = { MAJOR = "^BREAKING CHANGE", MINOR = "^feat", PATCH = "^(fix|perf|refactor)" }
+# 键值方向是 {正则模式: 增量名}——cz_customize 按 `for pattern, increment in
+# bump_map.items()` 消费(见 cz/customize/customize.py)。写反成 {增量名: 模式}
+# 会把 "MAJOR"/"MINOR"/"PATCH" 当正则匹配提交信息、永不命中,cz bump 报
+# NO_COMMITS_TO_BUMP 而自动定级静默失效;显式 --increment 仍可用,故极易漏检
+# (本仓库曾如此潜伏三个版本)。守卫见 tests/test_version.py。
+bump_map = { "^BREAKING CHANGE" = "MAJOR", "^feat" = "MINOR", "^(fix|perf|refactor)" = "PATCH" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
