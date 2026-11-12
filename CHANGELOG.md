@@ -5,7 +5,7 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.7.4] - 2026-11-12
 
 ### 修复
 
@@ -197,6 +197,7 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
+[0.7.4]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.4
 [0.7.3]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.3
 [0.7.2]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.2
 [0.7.1]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.1
