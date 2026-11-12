@@ -36,7 +36,7 @@ version = { attr = "md2zh.__version__" }
 # CHANGELOG 手写(含实证数据与根因分析),刻意不由工具生成。
 [tool.commitizen]
 name = "cz_customize"
-version = "0.7.3"
+version = "0.7.4"
 tag_format = "v$version"
 update_changelog_on_bump = false
 # 刻意不含 CLAUDE.md:该文件多处散文里出现「当前版本」字样(发版说明、历史
