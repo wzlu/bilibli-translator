@@ -156,7 +156,7 @@ POST https://index-translate.bilibili.com/v1/chat/completions
 
 - 默认模型 `Index-Translate-35B-A3B`(可用 `--model`/`--api-base` 覆盖);
 - 流式请求(规避非流式长文本 504)、`temperature=0.0`、关闭思维链输出;
-- 网络错误自动重试 2 次,耗尽报退出码 75;
+- 自动重试 2 次、**指数退避**(1s、2s):网络错误、5xx 与 408/412/429 属可重试,其余 4xx 源于请求本身故立即失败;重试耗尽报退出码 75;
 - 完整协议参考 `references/call_api.py`(支持图片翻译、本地代理等更多能力,本工具未复制)。
 
 `--ollama` 模式下改用本地 ollama 的 OpenAI 兼容端点(需本机已运行 ollama 且已拉取 `index-translate-9b:latest`):
@@ -184,8 +184,9 @@ python -m pytest -v --junitxml=reports/junit.xml   # 生成测试报告
 欢迎提交 Issue 与 Pull Request;重大改动建议先开 Issue 讨论方案。
 
 - 代码注释与用户可见输出一律中文;
-- 提交信息以 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 结尾;
-- 开发流程详见 `CLAUDE.md`(严格 TDD 与子代理驱动开发台账)。
+- 提交信息遵循 Conventional Commits:`<type>(<scope>): <subject>`,可用 type 以 `pyproject.toml` 的 `[tool.commitizen.customize].schema_pattern` 为准;门禁 `pipx run --spec commitizen cz check --rev-range <上一个 tag>..HEAD`;
+- 由 Claude Code 协作产生的提交以 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 结尾;
+- 开发流程详见 `CLAUDE.md`(严格 TDD、刻意取舍留痕与子代理驱动开发台账)。
 
 ## 项目结构
 
