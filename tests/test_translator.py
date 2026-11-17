@@ -345,6 +345,47 @@ def test_long_single_line_split_into_bounded_calls(monkeypatch, tmp_path):
     assert all(b < translator.MAX_TOKENS_CEILING for b in budgets)  # 预算不再触顶
 
 
+def test_unsplittable_giant_block_kept_as_is(monkeypatch, capsys):
+    # 回归:无空白切点的超大块曾被整块送 API,必被网关拒 → 整文件退出 75。
+    # 实证 a2ui-playground SKILL.md:第 10 行为 196937 字符的单行压缩 JSON,
+    # 强制切分成功 15 步后,尾部 109948 字符在前 6000 内最后一个空格位于 1953
+    # (< FORCE_SPLIT_LIMIT // 2 = 3000)→ 走「整块保留」→ prompt+预算 ≈ 网关
+    # 24576 tokens 总量上限的 2.2~2.9 倍 → invalid_request
+    calls = []
+
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
+        calls.append(prompt)
+        return "标题译文"
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
+    giant = "a" * (translator.UNSENDABLE_LIMIT + 1)  # 无空白 → 无切点
+    result = translator._translate_document("# Title\n\n" + giant, [], "http://x", "m",
+                                           source="docs/a.md")
+    assert len(calls) == 1        # 仅标题块送 API,巨块未送
+    assert giant in result        # 巨块原样保留
+    err = capsys.readouterr().err
+    assert "docs/a.md" in err and "无空白切点" in err
+
+
+def test_block_at_unsendable_limit_still_translated(monkeypatch):
+    # 钉住阈值比较为「>」而非「>=」:恰好等于 UNSENDABLE_LIMIT 的无空白块仍送 API,
+    # 保证预算封顶路径可达(见 test_oversized_chunk_budget_capped)
+    block = "a" * (translator.UNSENDABLE_LIMIT - 1) + "\n"
+    assert len(block) == translator.UNSENDABLE_LIMIT  # 夹具自检:算错就不是在测边界
+    budgets = []
+
+    def fake(api_base, model, prompt, max_tokens, ollama=False):
+        budgets.append(max_tokens)
+        return block.rstrip()
+
+    monkeypatch.setattr(api, "translate_text", fake)
+    monkeypatch.setattr(translator, "SINGLE_CALL_LIMIT", 100)
+    result = translator._translate_document(block, [], "http://x", "m")
+    assert budgets == [translator.MAX_TOKENS_CEILING]  # 送 API 且预算封顶
+    assert block.rstrip() in result
+
+
 def test_parse_filelist(tmp_path):
     lst = tmp_path / "list.txt"
     lst.write_text("# 注释\n\na.md\n  b.md  \n\n", encoding="utf-8")

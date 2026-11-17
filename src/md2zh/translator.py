@@ -29,6 +29,14 @@ MAX_TOKENS_CHUNK = 4096
 # 网关 max_tokens 上限:超限返回 invalid_request(实证 38106 拒、16384 通过)。
 # shortcut: 16384 是公共网关实证值、非文档规格;网关调整上限或换后端时需重新标定
 MAX_TOKENS_CEILING = 16384
+# 无空白切点的块(压缩 JSON / 长 hash / base64)无法强制切分,只能整块送译。
+# 网关限「prompt + max_tokens」总量(实证 ≈24576 tokens),预算封顶 16384 后仅剩
+# 8192 tokens 给 prompt;按密集 JSON 的保守下界 2.0 字符/token 折算约 16384 字符,
+# 留 25% 余量取 12000。超过则不送 API、原样保留并警告——实证 a2ui-playground
+# SKILL.md 的 196937 字符单行压缩 JSON,强制切分 15 步后尾部 109948 字符无空白可切,
+# 整块送译使 prompt+预算达上限 2.2~2.9 倍 → invalid_request → 整文件退出 75。
+# shortcut: 12000 由网关实证总量折算而非直接标定;网关调整上限或换后端时需重新标定
+UNSENDABLE_LIMIT = 12000
 
 _stderr_lock = threading.Lock()
 
@@ -221,6 +229,15 @@ def _translate_long(text: str, glossary: list[str], api_base: str, model: str,
     prev_context = ""
     half = CONTEXT_TAIL // 2
     for chunk in fmt.chunk_text(text, CHUNK_SIZE):
+        if len(chunk) > UNSENDABLE_LIMIT:
+            # 无空白切点的超大块:整块送译必被网关按总量拒绝(见 UNSENDABLE_LIMIT),
+            # 原样保留不译。prev_context 不更新——机器数据的尾部对术语延续无用,
+            # 沿用上一次真实译文的上下文比塞 800 字符压缩 JSON 更省 prompt
+            prefix = f"{source}: " if source else ""
+            _warn(f"md2zh: 警告: {prefix}块过长且无空白切点({len(chunk)} 字符),"
+                  f"原样保留不翻译")
+            parts.append(chunk)
+            continue
         # 不可分割的超限块(如大表格)按块长放大输出预算,避免确定性截断;
         # 封顶于网关上限(可切分的巨块已由 markdown.FORCE_SPLIT_LIMIT 强制切分)
         budget = min(max(MAX_TOKENS_CHUNK, len(chunk) * 2 + 200), MAX_TOKENS_CEILING)
