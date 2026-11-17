@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.7.5] - 2026-11-17
+
+### 修复
+
+- 无空白切点的超大块导致**整个文件翻译失败退出 75**(`网关返回错误: 请求参数或格式有误`):`_split_oversized` 对超过 `FORCE_SPLIT_LIMIT`(6000 字符)的块按空白边界强制切分,但当换行与空格切点都缺失或过早(首片不足 3000 字符)时,v0.7.3 为消除「微小首片」回归而加的守卫会让它**整块保留**;该块随后仍被无条件送 API,而 `MAX_TOKENS_CEILING` 只能压低输出预算、**压不了 prompt**,于是必然超出网关「prompt + max_tokens」总量上限(≈24576 tokens)而被拒。实证:a2ui-playground 的 `SKILL.md`(217835 字符)第 10 行是 **196937 字符的单行压缩 JSON**,且未加代码围栏故未被占位符保护,最大逻辑块 196959 字符;强制切分前 15 步正常切出 5348~5997 字符的片,第 16 步剩余 **109948 字符**、其前 6000 字符内最后一个空格位于索引 1953 → 整块保留 → prompt ≈110K 字符 ≈37K~55K tokens + 封顶预算 16384 = **上限的 2.2~2.9 倍** → HTTP 200 + SSE `invalid_request`;且它是第 20/24 个 chunk,前 19 次调用白跑后才失败。现改为 `translator` 新增 `UNSENDABLE_LIMIT = 12000`,`_translate_long` 对超限块**不送 API、原样保留**,stderr 输出带来源前缀的警告。阈值推导:24576 − 封顶预算 16384 = 8192 tokens 留给 prompt,按密集 JSON 的保守下界 2.0 字符/token 折算 ≈16384 字符,再留 25% 余量(与 `FORCE_SPLIT_LIMIT` 同一口径)→ 取整 12000;该值刻意高于既有封顶测试的 10001 字符夹具,使预算封顶路径保持可达。`markdown.py` **零改动**——其 `break` 本就正确保留了整块,缺的只是「别送出去」,而 `_warn` 与 `source` 都属编排层。取舍:采「整块不译」而非「令牌感知硬切」——硬切会让模型看到括号不配对的 JSON 碎片,改写结构的风险高于收益,且该文件 50.5% 篇幅是机器配置。已知取舍:12000~约 17000 字符的无空白块属「网关其实会接受但被保守跳过」的区间(实测英文 markdown 的 prompt 在 17894/19982 字符 + 16384 预算下均被接受),跳过只损失翻译覆盖率且有警告可审计,送过头则整文件退出 75。真实 API 端到端复跑实测:**退出 0**、stderr 仅新增那一条警告、`SKILL_zh.md` 209105 字符(源 217835),被跳过的 109948 字符块**逐字节保留且仅出现 1 次**、`@@@` 残留 0 处、frontmatter 完好(`name` key 未译、`description` 已译)、文件结尾逐字节一致、其余可译段落 0 段漏译。
+
 ## [0.7.4] - 2026-11-12
 
 ### 修复
@@ -197,6 +203,7 @@
 - README 补充代码仓库链接、git clone 安装路径与许可证章节
 - CLAUDE.md 更新远程仓库与文件跟踪状态说明
 
+[0.7.5]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.5
 [0.7.4]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.4
 [0.7.3]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.3
 [0.7.2]: https://github.com/wzlu/bilibli-translator/releases/tag/v0.7.2
